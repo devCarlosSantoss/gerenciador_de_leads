@@ -31,7 +31,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   libgdk-pixbuf-2.0-0 fonts-liberation && \
   rm -rf /var/lib/apt/lists/*
 
-COPY --from=deps /app/node_modules ./node_modules
+COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/prisma ./prisma
