@@ -1,0 +1,17 @@
+# Render Blueprint — deploiement en Render (plan gratuit)
+# https://render.com -> "New +" -> "Blueprint" -> selecione este repositório
+services:
+  - type: web
+    name: leads-pro
+    runtime: docker
+    plan: free
+    autoDeploy: true
+    envVars:
+      - key: DATABASE_URL
+        sync: false # preencha no painel com a connection string do Neon/Supabase
+      - key: ADMIN_USER
+        value: admin
+      - key: ADMIN_PASSWORD
+        sync: false # defina uma senha forte no painel
+      - key: AUTH_SECRET
+        generateValue: true
