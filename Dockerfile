@@ -12,6 +12,9 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 # Chromium usado pelo capturador do Google Maps
 RUN npx playwright install chromium
+# DATABASE_URL fake apenas para o prisma generate/build (uso real vem do ambiente em runtime)
+ARG DATABASE_URL=postgresql://placeholder:placeholder@localhost:5432/placeholder?schema=public
+ENV DATABASE_URL=$DATABASE_URL
 RUN npx prisma generate
 RUN npm run build
 
