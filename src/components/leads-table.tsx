@@ -11,9 +11,11 @@ import {
   Mail,
   Phone,
   MapPin,
+  Sparkles,
+  Loader2,
 } from "lucide-react";
-import { StatusBadge } from "@/components/status-badge";
-import type { Lead } from "@prisma/client";
+import { STATUS, STATUS_KEYS } from "@/lib/constants";
+import type { Lead, LeadStatus } from "@prisma/client";
 
 export function LeadsTable({
   leads,
@@ -33,6 +35,8 @@ export function LeadsTable({
   const router = useRouter();
   const [selected, setSelected] = useState<string[]>([]);
   const [isPending, startTransition] = useTransition();
+  const [analyzing, setAnalyzing] = useState(false);
+  const [feedback, setFeedback] = useState<string | null>(null);
 
   async function deleteLeads(ids: string[]) {
     if (!confirm(`Excluir ${ids.length} lead(s)? Essa ação não pode ser desfeita.`))
@@ -46,6 +50,59 @@ export function LeadsTable({
     startTransition(() => router.refresh());
   }
 
+  async function updateStatus(id: string, status: LeadStatus) {
+    await fetch(`/api/leads/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status }),
+    });
+    startTransition(() => router.refresh());
+  }
+
+  async function analyzeLeads(ids: string[]) {
+    setAnalyzing(true);
+    setFeedback(null);
+    try {
+      const res = await fetch("/api/leads/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids }),
+      });
+      const body = (await res.json()) as {
+        error?: string;
+        enqueued?: number;
+        failed?: number;
+        results?: { message: string }[];
+      };
+      if (!res.ok) {
+        setFeedback(body.error ?? "Erro ao analisar leads.");
+        return;
+      }
+      const details = (body.results ?? [])
+        .filter((r) => !r.message.startsWith("Lead ainda não migrado"))
+        .slice(0, 3)
+        .map((r) => r.message);
+      const notMigrated = (body.results ?? []).filter((r) =>
+        r.message.startsWith("Lead ainda não migrado"),
+      ).length;
+      const msg = [
+        `${body.enqueued ?? 0} em análise.`,
+        ...details,
+        notMigrated > 0
+          ? `${notMigrated} não migrado(s) para o novo sistema.`
+          : "",
+      ]
+        .filter(Boolean)
+        .join(" ");
+      setFeedback(msg);
+      setSelected([]);
+    } catch {
+      setFeedback("Erro de conexão ao analisar leads.");
+    } finally {
+      setAnalyzing(false);
+    }
+  }
+
   const allSelected = leads.length > 0 && selected.length === leads.length;
 
   return (
@@ -57,15 +114,35 @@ export function LeadsTable({
             : `${total} resultado(s)`}
         </p>
         {selected.length > 0 && (
-          <button
-            className="btn-danger h-8 px-3 text-xs"
-            onClick={() => deleteLeads(selected)}
-          >
-            <Trash2 className="h-4 w-4" />
-            Excluir selecionados
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              className="btn-primary h-8 px-3 text-xs"
+              onClick={() => analyzeLeads(selected)}
+              disabled={analyzing}
+            >
+              {analyzing ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Sparkles className="h-4 w-4" />
+              )}
+              Analisar com IA
+            </button>
+            <button
+              className="btn-danger h-8 px-3 text-xs"
+              onClick={() => deleteLeads(selected)}
+            >
+              <Trash2 className="h-4 w-4" />
+              Excluir selecionados
+            </button>
+          </div>
         )}
       </div>
+
+      {feedback && (
+        <div className="border-b border-indigo-100 bg-indigo-50 px-4 py-3 text-sm text-indigo-900">
+          {feedback}
+        </div>
+      )}
 
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
@@ -171,7 +248,19 @@ export function LeadsTable({
                   )}
                 </td>
                 <td className="px-4 py-3">
-                  <StatusBadge status={lead.status} />
+                  <select
+                    className="input h-8 rounded-lg px-2 py-0 text-xs"
+                    defaultValue={lead.status}
+                    onChange={(e) =>
+                      updateStatus(lead.id, e.target.value as LeadStatus)
+                    }
+                  >
+                    {STATUS_KEYS.map((key) => (
+                      <option key={key} value={key}>
+                        {STATUS[key].label}
+                      </option>
+                    ))}
+                  </select>
                 </td>
                 <td className="px-4 py-3 text-right">
                   <div className="flex justify-end gap-1">

@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Artefatos de build do backend não devem ser lintados.
+    "backend/dist/**",
   ]),
 ]);
 

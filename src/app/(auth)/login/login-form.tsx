@@ -2,11 +2,12 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, LogIn, AlertTriangle, Lock, User } from "lucide-react";
+import Link from "next/link";
+import { Loader2, LogIn, AlertTriangle, Lock, Mail } from "lucide-react";
 
-export function LoginForm({ showHint = false }: { showHint?: boolean }) {
+export function LoginForm() {
   const router = useRouter();
-  const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -19,7 +20,7 @@ export function LoginForm({ showHint = false }: { showHint?: boolean }) {
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify({ email, password }),
       });
       const data = await res.json().catch(() => null);
       if (!res.ok) throw new Error(data?.error ?? "Erro ao entrar");
@@ -42,25 +43,32 @@ export function LoginForm({ showHint = false }: { showHint?: boolean }) {
       )}
 
       <div>
-        <label className="label">Usuário</label>
+        <label className="label" htmlFor="email">
+          E-mail
+        </label>
         <div className="relative">
-          <User className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <input
+            id="email"
             className="input pl-9"
             required
-            autoComplete="username"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            placeholder="usuário"
+            type="email"
+            autoComplete="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="voce@empresa.com"
           />
         </div>
       </div>
 
       <div>
-        <label className="label">Senha</label>
+        <label className="label" htmlFor="password">
+          Senha
+        </label>
         <div className="relative">
           <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <input
+            id="password"
             className="input pl-9"
             required
             type="password"
@@ -81,12 +89,11 @@ export function LoginForm({ showHint = false }: { showHint?: boolean }) {
         {loading ? "Entrando..." : "Entrar"}
       </button>
 
-      {showHint && (
-        <p className="pt-1 text-center text-xs text-slate-400">
-          Usuário padrão: <span className="font-medium">admin</span> · Senha:{" "}
-          <span className="font-medium">admin123</span>
-        </p>
-      )}
+      <p className="pt-1 text-center text-sm text-slate-500">
+        <Link href="/forgot-password" className="text-indigo-600 hover:underline">
+          Esqueci minha senha
+        </Link>
+      </p>
     </form>
   );
 }

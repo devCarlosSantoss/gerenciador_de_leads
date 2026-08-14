@@ -1,11 +1,6 @@
 import { LoginForm } from "./login-form";
-import { getAdminCredentials } from "@/lib/session";
 
 export default function LoginPage() {
-  const creds = getAdminCredentials();
-  const showHint =
-    creds.username === "admin" && creds.password === "admin123";
-
   return (
     <div className="card w-full max-w-sm p-8">
       <div className="mb-6 flex flex-col items-center text-center">
@@ -17,7 +12,7 @@ export default function LoginPage() {
           Acesse o gerenciador de leads
         </p>
       </div>
-      <LoginForm showHint={showHint} />
+      <LoginForm />
     </div>
   );
 }

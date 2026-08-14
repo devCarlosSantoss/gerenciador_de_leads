@@ -1,0 +1,16 @@
+# build
+dist/
+*.tsbuildinfo
+node_modules/
+
+# env — nunca commitar segredos (tokens Meta/Instagram, chaves de LLM)
+.env
+.env.local
+.env.production
+
+# logs
+logs/
+*.log
+
+# prisma (client é gerado em node_modules)
+prisma/migrations/dev.db

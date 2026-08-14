@@ -13,14 +13,18 @@ import {
   Sparkles,
   LogOut,
   UserCircle2,
+  Send,
+  KeyRound,
 } from "lucide-react";
 import { useState } from "react";
 import clsx from "clsx";
+import type { SessionUser } from "@/lib/session";
 
 const NAV = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/leads", label: "Leads", icon: Users },
   { href: "/capturar", label: "Capturar na Internet", icon: Radar },
+  { href: "/manual", label: "Envio manual", icon: Send },
 ];
 
 export function Shell({
@@ -28,7 +32,7 @@ export function Shell({
   user,
 }: {
   children: React.ReactNode;
-  user: string | null;
+  user: SessionUser | null;
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -106,15 +110,24 @@ export function Shell({
               <FileDown className="h-5 w-5" />
               Exportar CSV
             </a>
+            <Link
+              href="/seguranca"
+              className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100"
+            >
+              <KeyRound className="h-5 w-5" />
+              Trocar senha
+            </Link>
           </div>
           {user && (
             <div className="mt-4 flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
               <UserCircle2 className="h-5 w-5 shrink-0 text-slate-400" />
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium text-slate-700">
-                  {user}
+                  {user.email}
                 </p>
-                <p className="text-xs text-slate-400">Administrador</p>
+                <p className="text-xs text-slate-400">
+                  {user.role === "ADMIN" ? "Administrador" : user.role}
+                </p>
               </div>
               <button
                 className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-rose-600"

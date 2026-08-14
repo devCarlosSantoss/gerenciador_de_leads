@@ -19,16 +19,30 @@ Sistema de gerenciamento de leads construído com **Next.js 16 + PostgreSQL + Pr
 
 ## Acesso ao sistema (login)
 
-Ao abrir o sistema, faça login com o usuário padrão:
+O login usa **e-mail e senha** e é autenticado pelo backend NestJS (autoridade de autenticação),
+que valida a senha com **Argon2id** e emite tokens de acesso (JWT de curta duração) e de
+atualização (refresh token opaco com rotação/revogação).
 
-| Campo   | Valor     |
-| ------- | --------- |
-| Usuário | `admin`   |
-| Senha   | `admin123` |
+> Não existe mais usuário padrão `admin/admin123`. O primeiro administrador é criado via
+> script no backend (veja `backend/README.md` → `npm run db:create-admin`). Em produção
+> defina `ADMIN_INITIAL_*` e `JWT_SECRET` no backend e a mesma `JWT_SECRET` no frontend.
 
-> **Importante:** mude a senha padrão. No arquivo `.env` (ou nas variáveis de ambiente do deploy) defina `ADMIN_USER`, `ADMIN_PASSWORD` e `AUTH_SECRET` (gere uma com `openssl rand -hex 32`).
+Recursos de segurança implementados:
+
+- Senhas com hash **Argon2id** e política de senha forte (mín. 12 caracteres, 3 de 4 classes).
+- **Access token JWT** (15 min) + **refresh token** (7 dias, armazenado apenas como hash)
+  com rotação por família e revogação em caso de reuso.
+- **Lockout** após 5 tentativas inválidas (15 min) e **rate limiting** por IP (Redis).
+- Recuperação/alteração de senha com tokens de uso único e expiração.
+- Cookies `HttpOnly`/`Secure`/`SameSite=Strict`, proxy com **refresh silencioso** e CORS restrito.
+- MFA (TOTP/e-mail) preparado no schema (em implementação).
+- Trilha de auditoria de todas as ações de autenticação no banco.
 
 ## Configuração
+
+> O sistema é dividido em **frontend** (este diretório, Next.js) e **backend**
+> (`backend/`, NestJS). O frontend depende do backend para autenticação e dados de
+> prospecção. Veja `backend/README.md` para configurar e subir o backend.
 
 ### 1. Banco de dados
 
@@ -82,17 +96,21 @@ src/
     leads/              # Lista, novo, detalhe e edição
     capturar/           # UI de captura
     importar/           # Importação CSV
-    login/              # Página de login
+    login/              # Página de login (e-mail)
+    forgot-password/    # Solicitar link de redefinição
+    reset-password/     # Definir nova senha (token do link)
+    seguranca/          # Trocar senha (área logada)
     api/
-      auth/             # Login e logout
+      auth/             # Login, logout, refresh e troca/redefinição de senha (proxy p/ backend)
       scrape/           # Executa a captura (POST)
       leads/            # CRUD de leads
       leads/batch/      # Salvar leads capturados em lote
       import/           # Importação CSV
       export/           # Exportação CSV
   components/           # Componentes da UI
-  proxy.ts              # Guarda de autenticação (protege as rotas)
+  proxy.ts              # Valida o JWT + refresh silencioso (protege as rotas)
   lib/
+    session.ts          # Sessão JWT/cookies e refresh
     db.ts               # Cliente Prisma
     auth.ts             # Sessão de login
     scraper/            # Motor de captura (Playwright)
@@ -109,7 +127,7 @@ Passos no Render:
 
 1. Suba o repositório para o GitHub.
 2. Em Render, **New + → Blueprint** e selecione o repositório (o `render.yaml` vem pronto).
-3. Preencha `DATABASE_URL` com a connection string do Neon/Supabase e defina `ADMIN_PASSWORD`.
+3. Preencha `DATABASE_URL` com a connection string do Neon/Supabase e defina `JWT_SECRET` (a mesma usada no backend) e `PROSPECTING_API_URL`/`PROSPECTING_ORG_ID`.
 4. Ajuste o plano para **Free** e **Deploy**.
 
 Os dados da tabela são criados automaticamente na primeira execução do container

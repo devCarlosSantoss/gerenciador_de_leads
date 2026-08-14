@@ -9,9 +9,9 @@ services:
     envVars:
       - key: DATABASE_URL
         sync: false # preencha no painel com a connection string do Neon/Supabase
-      - key: ADMIN_USER
-        value: admin
-      - key: ADMIN_PASSWORD
-        sync: false # defina uma senha forte no painel
-      - key: AUTH_SECRET
-        generateValue: true
+      - key: JWT_SECRET
+        sync: false # defina a mesma JWT_SECRET usada no serviço backend (openssl rand -hex 32)
+      - key: PROSPECTING_API_URL
+        sync: false # URL pública do serviço backend (ex.: https://backend.onrender.com)
+      - key: PROSPECTING_ORG_ID
+        sync: false # id do tenant usado nas chamadas (X-Org-ID)
