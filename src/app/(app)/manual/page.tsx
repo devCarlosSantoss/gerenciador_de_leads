@@ -16,7 +16,7 @@ export default async function ManualSendPage() {
 
   try {
     const [pendingLeads, readyLeads] = await Promise.all([
-      listLeadsReady("MESSAGE_PENDING_APPROVAL"),
+      listLeadsReady("MESSAGE_GENERATED"),
       listLeadsReady("MESSAGE_APPROVED"),
     ]);
 
