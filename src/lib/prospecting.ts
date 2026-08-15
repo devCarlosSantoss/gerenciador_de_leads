@@ -1,7 +1,7 @@
 import "server-only";
 import { ensureAccessToken } from "@/lib/session";
 
-const BASE_URL = process.env.PROSPECTING_API_URL?.replace(/\/$/, "") ?? "";
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ?? "";
 
 export class ProspectingApiError extends Error {
   constructor(
@@ -97,7 +97,7 @@ export interface BackendImportItem {
 async function fetchApi<T>(path: string, init?: RequestInit): Promise<T> {
   if (!BASE_URL) {
     throw new ProspectingApiError(
-      "Configuração ausente: defina PROSPECTING_API_URL no .env",
+      "Configuração ausente: defina NEXT_PUBLIC_API_URL no .env",
       500,
     );
   }

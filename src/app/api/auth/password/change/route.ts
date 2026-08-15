@@ -1,6 +1,6 @@
 import { clearAuthCookies, ensureAccessToken } from "@/lib/session";
 
-const AUTH_API_URL = (process.env.PROSPECTING_API_URL ?? "").replace(/\/$/, "");
+const AUTH_API_URL = (process.env.NEXT_PUBLIC_API_URL ?? "").replace(/\/$/, "");
 
 export async function POST(request: Request) {
   try {

@@ -1,6 +1,6 @@
 import { setAuthCookies } from "@/lib/session";
 
-const AUTH_API_URL = (process.env.PROSPECTING_API_URL ?? "").replace(/\/$/, "");
+const AUTH_API_URL = (process.env.NEXT_PUBLIC_API_URL ?? "").replace(/\/$/, "");
 
 const GENERIC_ERROR = "Credenciais inválidas ou conta bloqueada.";
 
@@ -18,7 +18,7 @@ export async function POST(request: Request) {
     }
     if (!AUTH_API_URL) {
       return Response.json(
-        { error: "Backend de autenticação não configurado (PROSPECTING_API_URL)." },
+        { error: "Backend de autenticação não configurado (NEXT_PUBLIC_API_URL)." },
         { status: 500 },
       );
     }

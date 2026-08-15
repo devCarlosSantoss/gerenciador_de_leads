@@ -86,7 +86,7 @@ export async function clearAuthCookies() {
 // ─────────────────── Refresh silencioso (server-only) ───────────────────
 
 function authApiBaseUrl(): string {
-  return (process.env.PROSPECTING_API_URL ?? "").replace(/\/$/, "");
+  return (process.env.NEXT_PUBLIC_API_URL ?? "").replace(/\/$/, "");
 }
 
 /** Troca o refresh token por um novo par (rotação) e atualiza os cookies. */

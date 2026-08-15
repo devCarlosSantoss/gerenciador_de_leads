@@ -9,7 +9,7 @@ import {
   REFRESH_TOKEN_TTL_SECONDS,
 } from "@/lib/session";
 
-const AUTH_API_URL = (process.env.PROSPECTING_API_URL ?? "").replace(/\/$/, "");
+const AUTH_API_URL = (process.env.NEXT_PUBLIC_API_URL ?? "").replace(/\/$/, "");
 
 // Páginas públicas do grupo (auth) — redirecionam para / quando logado.
 const PUBLIC_PATHS = ["/login", "/forgot-password", "/reset-password"];
