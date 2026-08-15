@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "cp -r ../backend/prisma ./prisma && npx prisma generate && next build",
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
