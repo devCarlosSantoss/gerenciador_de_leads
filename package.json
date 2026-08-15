@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "npx playwright install chromium && cp -r backend/prisma ./prisma && DATABASE_URL=\"postgresql://dummy:dummy@localhost:5432/dummy\" npx prisma generate && next build",
+    "build": "PLAYWRIGHT_BROWSERS_PATH=/opt/render/project/.cache/playwright npx playwright install chromium && cp -r backend/prisma ./prisma && DATABASE_URL=\"postgresql://dummy:dummy@localhost:5432/dummy\" npx prisma generate && next build",
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
