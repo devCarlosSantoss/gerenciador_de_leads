@@ -5,7 +5,7 @@ import {
   resolveByExternalId,
   type BackendImportItem,
 } from "@/lib/prospecting";
-import type { Lead } from "@/types/prisma";
+import type { LeadDetail } from "@/types/prisma";
 
 interface AnalyzeResult {
   id: string;
@@ -30,14 +30,22 @@ function isHttpUrl(value: string | null | undefined): string | null {
   }
 }
 
-function buildImportItem(lead: Lead): BackendImportItem {
+function getPrimaryContact(contacts: { type: string; value: string; isPrimary?: boolean }[], type: string): string | undefined {
+  return contacts.find((c) => c.type === type)?.value;
+}
+
+function buildImportItem(lead: LeadDetail): BackendImportItem {
   const contacts: BackendImportItem["contacts"] = [];
-  if (lead.whatsapp) contacts.push({ type: "WHATSAPP", value: lead.whatsapp });
-  else if (lead.phone) contacts.push({ type: "PHONE", value: lead.phone });
-  if (lead.email)
+  const whatsapp = getPrimaryContact(lead.contacts, "WHATSAPP");
+  const phone = getPrimaryContact(lead.contacts, "PHONE");
+  const email = getPrimaryContact(lead.contacts, "EMAIL");
+  
+  if (whatsapp) contacts.push({ type: "WHATSAPP", value: whatsapp });
+  else if (phone) contacts.push({ type: "PHONE", value: phone });
+  if (email)
     contacts.push({
       type: "EMAIL",
-      value: lead.email,
+      value: email,
       isPrimary: contacts.length === 0,
     });
 
@@ -52,9 +60,9 @@ function buildImportItem(lead: Lead): BackendImportItem {
       address: lead.address,
       city: lead.city,
       state: lead.state ? lead.state.slice(0, 2).toUpperCase() : null,
-      website: isHttpUrl(lead.website),
-      phone: lead.phone,
-      whatsapp: lead.whatsapp,
+      website: isHttpUrl(lead.websites[0]?.url),
+      phone,
+      whatsapp,
       rating: lead.rating,
       reviewsCount: lead.reviewsCount,
     },
@@ -76,7 +84,7 @@ async function migrateAndAnalyze(leadId: string): Promise<AnalyzeResult> {
     ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
   };
 
-  let lead: Lead | null = null;
+  let lead: LeadDetail | null = null;
   try {
     const res = await fetch(`${API_URL}/leads/${leadId}`, { headers, cache: "no-store" });
     if (res.ok) lead = await res.json();

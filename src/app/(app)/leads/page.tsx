@@ -3,7 +3,7 @@ import { LeadsTable } from "@/components/leads-table";
 import { LeadFilters } from "@/components/lead-filters";
 import Link from "next/link";
 import { Plus } from "lucide-react";
-import type { Lead } from "@/types/prisma";
+import type { LeadListItem } from "@/types/prisma";
 
 export const dynamic = "force-dynamic";
 
@@ -24,7 +24,7 @@ async function fetchLeads(params: {
   status?: string;
   page: number;
   pageSize: number;
-}): Promise<{ data: Lead[]; total: number }> {
+}): Promise<{ data: LeadListItem[]; total: number }> {
   const API_URL = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ?? "";
   if (!API_URL) return { data: [], total: 0 };
 

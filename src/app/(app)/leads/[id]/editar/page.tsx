@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { LeadForm } from "@/components/lead-form";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
-import type { Lead } from "@/types/prisma";
+import type { LeadDetail } from "@/types/prisma";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +16,7 @@ async function getAuthHeaders(): Promise<HeadersInit> {
   };
 }
 
-async function fetchLead(id: string): Promise<Lead | null> {
+async function fetchLead(id: string): Promise<LeadDetail | null> {
   const API_URL = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ?? "";
   if (!API_URL) return null;
   const headers = await getAuthHeaders();

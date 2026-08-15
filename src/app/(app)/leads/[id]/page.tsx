@@ -10,7 +10,7 @@ import {
   ProspectingApiError,
   resolveByExternalId,
 } from "@/lib/prospecting";
-import type { Lead } from "@/types/prisma";
+import type { LeadDetail as LeadDetailType } from "@/types/prisma";
 
 export const dynamic = "force-dynamic";
 
@@ -24,7 +24,7 @@ async function getAuthHeaders(): Promise<HeadersInit> {
   };
 }
 
-async function fetchLead(id: string): Promise<Lead | null> {
+async function fetchLead(id: string): Promise<LeadDetailType | null> {
   const API_URL = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ?? "";
   if (!API_URL) return null;
   const headers = await getAuthHeaders();

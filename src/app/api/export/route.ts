@@ -1,3 +1,5 @@
+import type { LeadListItem } from "@/types/prisma";
+
 export const dynamic = "force-dynamic";
 
 async function getAuthHeaders(): Promise<HeadersInit> {
@@ -10,7 +12,7 @@ async function getAuthHeaders(): Promise<HeadersInit> {
   };
 }
 
-function getPrimaryContact(contacts: { type: string; value: string }[], type: string): string {
+function getPrimaryContact(contacts: { type: string; value: string; isPrimary?: boolean }[], type: string): string {
   const c = contacts.find((c) => c.type === type);
   return c?.value ?? "";
 }
@@ -31,7 +33,7 @@ export async function GET() {
     return new Response("Erro ao buscar leads", { status: res.status });
   }
 
-  const data = (await res.json()) as { data: Array<Record<string, unknown>> };
+  const data = (await res.json()) as { data: LeadListItem[] };
   const leads = data.data;
 
   const headersCSV = [
@@ -58,13 +60,13 @@ export async function GET() {
     return s;
   };
 
-  const rows = leads.map((l: Record<string, unknown>) =>
+  const rows = leads.map((l) =>
     [
       l.name,
       l.category,
-      getPrimaryContact(l.contacts as { type: string; value: string }[], "PHONE"),
-      getPrimaryContact(l.contacts as { type: string; value: string }[], "WHATSAPP"),
-      getPrimaryContact(l.contacts as { type: string; value: string }[], "EMAIL"),
+      getPrimaryContact(l.contacts, "PHONE"),
+      getPrimaryContact(l.contacts, "WHATSAPP"),
+      getPrimaryContact(l.contacts, "EMAIL"),
       l.websites?.[0]?.url ?? "",
       l.address,
       l.city,

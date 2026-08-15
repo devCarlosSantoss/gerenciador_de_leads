@@ -161,7 +161,12 @@ export interface LeadListItem {
   websiteStatus: WebsiteStatus;
   score: number | null;
   scoreTier: ScoreTier | null;
-  contacts: { type: ContactChannel; value: string }[];
+  contacts: { type: ContactChannel; value: string; isPrimary: boolean }[];
+  websites: { url: string }[];
+  address: string | null;
+  dataOrigin: string;
+  sourceUrl: string | null;
+  createdAt: string;
 }
 
 // Response detalhada do lead (GET /leads/:id)

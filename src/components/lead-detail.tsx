@@ -18,7 +18,7 @@ import {
   Link2,
 } from "lucide-react";
 import { StatusBadge } from "@/components/status-badge";
-import type { LeadDetail, LeadContact } from "@/types/prisma";
+import type { LeadDetail, LeadContact, ContactChannel } from "@/types/prisma";
 
 function getPrimaryContact(contacts: LeadContact[], type: ContactChannel): LeadContact | undefined {
   return contacts.find((c) => c.type === type && c.isPrimary) ?? contacts.find((c) => c.type === type);

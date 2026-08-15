@@ -3,11 +3,11 @@ import type { LeadStatus } from "@/types/prisma";
 const API_URL = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ?? "";
 
 const STATUSES: LeadStatus[] = [
-  "NOVO",
-  "CONTATADO",
-  "QUALIFICADO",
-  "PERDIDO",
-  "CONVERTIDO",
+  "NEW",
+  "CONTACTED_CONFIRMED",
+  "QUALIFIED",
+  "LOST",
+  "CONVERTED",
 ];
 
 function sanitize(body: Record<string, unknown>) {
@@ -37,7 +37,7 @@ function sanitize(body: Record<string, unknown>) {
         : null,
     status: (STATUSES as string[]).includes(String(body.status))
       ? (body.status as LeadStatus)
-      : "NOVO",
+      : "NEW",
     tags: Array.isArray(body.tags)
       ? body.tags.filter((t): t is string => typeof t === "string" && t.trim().length > 0)
       : [],

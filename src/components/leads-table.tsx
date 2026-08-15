@@ -17,7 +17,7 @@ import {
 import { STATUS, STATUS_KEYS } from "@/lib/constants";
 import type { LeadListItem, LeadStatus, ContactChannel } from "@/types/prisma";
 
-function getPrimaryContact(contacts: { type: ContactChannel; value: string }[], type: ContactChannel): string | undefined {
+function getPrimaryContact(contacts: { type: ContactChannel; value: string; isPrimary: boolean }[], type: ContactChannel): string | undefined {
   const c = contacts.find((c) => c.type === type && c.isPrimary) ?? contacts.find((c) => c.type === type);
   return c?.value;
 }
