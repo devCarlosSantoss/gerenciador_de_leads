@@ -260,8 +260,9 @@ export async function scrapeGoogleMaps(opts: ScrapeOptions): Promise<ScrapedLead
     } catch (err) {
       console.error(`[scraper] attempt ${attempt + 1} failed:`, err);
       if (attempt === MAX_RETRIES - 1) {
+        const detail = err instanceof Error ? err.message : String(err);
         throw new Error(
-          "Não foi possível capturar do Google Maps. Pode ser bloqueio temporário ou problema de rede. Tente novamente."
+          `Não foi possível capturar do Google Maps. Pode ser bloqueio temporário ou problema de rede. Tente novamente. (${detail})`
         );
       }
       await new Promise((r) => setTimeout(r, 3000));
