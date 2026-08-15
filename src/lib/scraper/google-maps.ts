@@ -35,7 +35,18 @@ function resolveChromiumExecutable(): string | undefined {
     );
   }
 
-  return candidates.find((c) => c && fs.existsSync(c));
+  const existing = candidates.filter((c) => c && fs.existsSync(c));
+  console.error(
+    "[scraper] PW_BROWSERS_PATH=",
+    process.env[PW_BROWSERS_PATH],
+    "cwd=",
+    process.cwd(),
+    "existing=",
+    existing,
+    "allCandidates=",
+    candidates
+  );
+  return existing[0];
 }
 
 async function launchBrowser() {
