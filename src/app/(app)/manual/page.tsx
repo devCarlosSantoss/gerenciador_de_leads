@@ -16,8 +16,8 @@ export default async function ManualSendPage() {
 
   try {
     const [pendingLeads, readyLeads] = await Promise.all([
-      listLeadsReady("AGUARDANDO_REVISAO"),
-      listLeadsReady("PRONTO_PARA_CONTATO"),
+      listLeadsReady("MESSAGE_PENDING_APPROVAL"),
+      listLeadsReady("MESSAGE_APPROVED"),
     ]);
 
     const [pendingItems, readyItems] = await Promise.all([

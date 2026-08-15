@@ -135,7 +135,7 @@ function postJson<T>(path: string, body: unknown): Promise<T> {
   });
 }
 
-export function listLeadsReady(status = "PRONTO_PARA_CONTATO", pageSize = 100) {
+export function listLeadsReady(status = "MESSAGE_APPROVED", pageSize = 100) {
   return fetchApi<{ data: ProspectingLead[]; total: number }>(
     `/leads?status=${encodeURIComponent(status)}&pageSize=${pageSize}`,
   );
