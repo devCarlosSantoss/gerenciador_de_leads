@@ -17,6 +17,7 @@
     "db:bootstrap": "tsx src/scripts/create-admin.ts"
   },
   "dependencies": {
+    "@nestjs/cli": "^11.0.0",
     "@nestjs/common": "^11.1.0",
     "@nestjs/core": "^11.1.0",
     "@nestjs/platform-express": "^11.1.0",
@@ -31,7 +32,6 @@
     "zod": "^3.25.0"
   },
   "devDependencies": {
-    "@nestjs/cli": "^11.0.0",
     "@types/express": "^5.0.0",
     "@types/node": "^20",
     "@types/pg": "^8.21.0",
