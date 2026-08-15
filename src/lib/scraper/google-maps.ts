@@ -1,12 +1,49 @@
 import { chromium, type Page, type Browser } from "playwright";
+import fs from "node:fs";
+import path from "node:path";
 import type { ScrapedLead } from "./types";
 
 const MAX_RETRIES = 2;
 
 const PW_BROWSERS_PATH = "PLAYWRIGHT_BROWSERS_PATH";
 const RENDER_ENV = "RENDER";
-if (process.env[RENDER_ENV]) {
-  process.env[PW_BROWSERS_PATH] = "0";
+
+function resolveChromiumExecutable(): string | undefined {
+  process.env[PW_BROWSERS_PATH] = process.env[PW_BROWSERS_PATH] ?? "0";
+
+  const candidates: string[] = [];
+
+  const register = chromium.executablePath();
+  if (register) candidates.push(register);
+
+  const projectRoot = process.cwd();
+  candidates.push(
+    path.join(
+      projectRoot,
+      "node_modules/playwright-core/.local-browsers/chromium-1234/chrome-linux64/chrome"
+    ),
+    path.join(
+      projectRoot,
+      "node_modules/playwright-core/.local-browsers/chromium_headless_shell-1234/chrome-headless-shell-linux64/chrome-headless-shell"
+    )
+  );
+
+  if (process.env[RENDER_ENV]) {
+    candidates.push(
+      "/opt/render/project/node_modules/playwright-core/.local-browsers/chromium-1234/chrome-linux64/chrome",
+      "/opt/render/project/node_modules/playwright-core/.local-browsers/chromium_headless_shell-1234/chrome-headless-shell-linux64/chrome-headless-shell"
+    );
+  }
+
+  return candidates.find((c) => c && fs.existsSync(c));
+}
+
+async function launchBrowser() {
+  const executablePath = resolveChromiumExecutable();
+  return chromium.launch({
+    headless: true,
+    ...(executablePath ? { executablePath } : {}),
+  });
 }
 
 function parseAddressParts(address: string): {
@@ -221,7 +258,7 @@ export async function scrapeGoogleMaps(opts: ScrapeOptions): Promise<ScrapedLead
 
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     try {
-      browser = await chromium.launch({ headless: true });
+      browser = await launchBrowser();
       const context = await browser.newContext({
         locale: "pt-BR",
         viewport: { width: 1280, height: 800 },
