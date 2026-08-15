@@ -5,16 +5,14 @@ import { z } from "zod";
  * (executada em `src/instrumentation.ts`).
  */
 const envSchema = z.object({
-  DATABASE_URL: z.string().min(1, "DATABASE_URL é obrigatório"),
   // Segredo compartilhado com o backend (assina/valida access tokens JWT).
   JWT_SECRET: z
     .string()
     .min(32, "JWT_SECRET deve ter no mínimo 32 caracteres (openssl rand -hex 32)"),
-  PROSPECTING_API_URL: z
+  NEXT_PUBLIC_API_URL: z
     .string()
-    .url("PROSPECTING_API_URL deve ser uma URL válida")
+    .url("NEXT_PUBLIC_API_URL deve ser uma URL válida")
     .optional(),
-  PROSPECTING_ORG_ID: z.string().min(1).optional(),
 });
 
 export function validateEnv(): void {
