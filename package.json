@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "cp -r backend/prisma ./prisma && DATABASE_URL=\"postgresql://dummy:dummy@localhost:5432/dummy\" npx prisma generate --no-engine && next build",
+    "build": "cp -r backend/prisma ./prisma && DATABASE_URL=\"postgresql://dummy:dummy@localhost:5432/dummy\" npx prisma generate && next build",
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
