@@ -4,7 +4,7 @@ import type { ScrapedLead } from "./types";
 const MAX_RETRIES = 2;
 
 if (process.env.RENDER) {
-  process.env.PLAYWRIGHT_BROWSERS_PATH = "/opt/render/project/.cache/playwright";
+  process.env["PLAYWRIGHT_BROWSERS_PATH"] = "0";
 }
 
 function parseAddressParts(address: string): {
