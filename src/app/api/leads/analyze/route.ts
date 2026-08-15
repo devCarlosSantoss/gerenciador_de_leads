@@ -1,4 +1,3 @@
-import { prisma } from "@/lib/db";
 import {
   enqueueAnalysis,
   importLeadsToBackend,
@@ -6,7 +5,7 @@ import {
   resolveByExternalId,
   type BackendImportItem,
 } from "@/lib/prospecting";
-import type { Lead } from "@prisma/client";
+import type { Lead } from "@/types/prisma";
 
 interface AnalyzeResult {
   id: string;
@@ -31,7 +30,6 @@ function isHttpUrl(value: string | null | undefined): string | null {
   }
 }
 
-/** Converte um Lead legado no contrato de importação do backend. */
 function buildImportItem(lead: Lead): BackendImportItem {
   const contacts: BackendImportItem["contacts"] = [];
   if (lead.whatsapp) contacts.push({ type: "WHATSAPP", value: lead.whatsapp });
@@ -47,7 +45,7 @@ function buildImportItem(lead: Lead): BackendImportItem {
     sourceKey: "frontend-legado",
     sourceUrl: isHttpUrl(lead.sourceUrl),
     externalId: lead.id,
-    collectedAt: lead.createdAt.toISOString(),
+    collectedAt: new Date(lead.createdAt).toISOString(),
     company: {
       name: lead.name,
       category: lead.category,
@@ -58,15 +56,34 @@ function buildImportItem(lead: Lead): BackendImportItem {
       phone: lead.phone,
       whatsapp: lead.whatsapp,
       rating: lead.rating,
-      reviewsCount: lead.reviews,
+      reviewsCount: lead.reviewsCount,
     },
     contacts,
   };
 }
 
-/** Migra o lead para o backend (se ainda não existir) e enfileira a análise. */
 async function migrateAndAnalyze(leadId: string): Promise<AnalyzeResult> {
-  const lead = await prisma.lead.findUnique({ where: { id: leadId } });
+  const API_URL = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ?? "";
+  if (!API_URL) {
+    return { id: leadId, queued: false, message: "API URL não configurada" };
+  }
+
+  const { cookies } = await import("next/headers");
+  const cookieStore = await cookies();
+  const accessToken = cookieStore.get("leads_session")?.value;
+  const headers: HeadersInit = {
+    "Content-Type": "application/json",
+    ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+  };
+
+  let lead: Lead | null = null;
+  try {
+    const res = await fetch(`${API_URL}/leads/${leadId}`, { headers, cache: "no-store" });
+    if (res.ok) lead = await res.json();
+  } catch {
+    // ignore
+  }
+
   if (!lead) {
     return { id: leadId, queued: false, message: "Lead não encontrado." };
   }
@@ -74,14 +91,10 @@ async function migrateAndAnalyze(leadId: string): Promise<AnalyzeResult> {
   try {
     await importLeadsToBackend([buildImportItem(lead)]);
   } catch (err) {
-    const msg =
-      err instanceof ProspectingApiError
-        ? err.message
-        : (err as Error).message;
+    const msg = err instanceof ProspectingApiError ? err.message : (err as Error).message;
     return { id: leadId, queued: false, message: `Falha ao migrar: ${msg}` };
   }
 
-  // O backend processa a importação em fila; aguarda a Company aparecer.
   const waited = Date.now();
   while (Date.now() - waited < MAX_WAIT_MS) {
     await delay(SLEEP_MS);
@@ -101,7 +114,6 @@ async function migrateAndAnalyze(leadId: string): Promise<AnalyzeResult> {
           message: `Falha ao enfileirar análise: ${(err as Error).message}`,
         };
       }
-      // 404: ainda não migrado — continua aguardando.
     }
   }
   return {

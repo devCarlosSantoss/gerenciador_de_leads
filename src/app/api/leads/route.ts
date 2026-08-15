@@ -1,5 +1,6 @@
-import { prisma } from "@/lib/db";
-import type { LeadStatus } from "@prisma/client";
+import type { LeadStatus } from "@/types/prisma";
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ?? "";
 
 const STATUSES: LeadStatus[] = [
   "NOVO",
@@ -43,14 +44,32 @@ function sanitize(body: Record<string, unknown>) {
   };
 }
 
+async function getAuthHeaders(): Promise<HeadersInit> {
+  const { cookies } = await import("next/headers");
+  const cookieStore = await cookies();
+  const accessToken = cookieStore.get("leads_session")?.value;
+  return {
+    "Content-Type": "application/json",
+    ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+  };
+}
+
 export async function POST(request: Request) {
   try {
     const body = sanitize(await request.json());
     if (!body.name) {
       return Response.json({ error: "O nome é obrigatório" }, { status: 400 });
     }
-    const lead = await prisma.lead.create({
-      data: {
+
+    if (!API_URL) {
+      return Response.json({ error: "API URL não configurada" }, { status: 500 });
+    }
+
+    const headers = await getAuthHeaders();
+    const res = await fetch(`${API_URL}/leads`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
         name: body.name!,
         company: body.company,
         email: body.email,
@@ -67,9 +86,16 @@ export async function POST(request: Request) {
         rating: body.rating,
         reviews: body.reviews,
         status: body.status,
-        tags: body.tags,
-      },
+      }),
+      cache: "no-store",
     });
+
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({ error: "Erro ao criar lead" }));
+      return Response.json(error, { status: res.status });
+    }
+
+    const lead = await res.json();
     return Response.json(lead, { status: 201 });
   } catch (err) {
     console.error(err);
@@ -83,8 +109,28 @@ export async function DELETE(request: Request) {
     if (!Array.isArray(ids) || ids.length === 0) {
       return Response.json({ error: "Nenhum lead selecionado" }, { status: 400 });
     }
-    const result = await prisma.lead.deleteMany({ where: { id: { in: ids } } });
-    return Response.json({ deleted: result.count });
+
+    if (!API_URL) {
+      return Response.json({ error: "API URL não configurada" }, { status: 500 });
+    }
+
+    const headers = await getAuthHeaders();
+    const results = await Promise.all(
+      ids.map((id) =>
+        fetch(`${API_URL}/leads/${id}`, {
+          method: "DELETE",
+          headers,
+          cache: "no-store",
+        })
+      )
+    );
+
+    let deleted = 0;
+    for (const res of results) {
+      if (res.ok) deleted++;
+    }
+
+    return Response.json({ deleted });
   } catch (err) {
     console.error(err);
     return Response.json({ error: "Erro ao excluir leads" }, { status: 500 });

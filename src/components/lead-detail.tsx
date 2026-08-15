@@ -18,7 +18,7 @@ import {
   Link2,
 } from "lucide-react";
 import { StatusBadge } from "@/components/status-badge";
-import type { Lead } from "@prisma/client";
+import type { Lead } from "@/types/prisma";
 
 export function LeadDetail({ lead }: { lead: Lead }) {
   const router = useRouter();

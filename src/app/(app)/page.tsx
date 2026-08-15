@@ -1,4 +1,3 @@
-import { prisma } from "@/lib/db";
 import { STATUS } from "@/lib/constants";
 import Link from "next/link";
 import {
@@ -10,32 +9,72 @@ import {
   TrendingUp,
 } from "lucide-react";
 import { StatusBadge } from "@/components/status-badge";
+import type { Lead } from "@/types/prisma";
 
 export const dynamic = "force-dynamic";
 
-export default async function DashboardPage() {
-  const [total, byStatus, recent, categories] = await Promise.all([
-    prisma.lead.count(),
-    prisma.lead.groupBy({ by: ["status"], _count: { _all: true } }),
-    prisma.lead.findMany({ orderBy: { createdAt: "desc" }, take: 6 }),
-    prisma.lead.groupBy({ by: ["category"], _count: { _all: true } }),
+async function getAuthHeaders(): Promise<HeadersInit> {
+  const { cookies } = await import("next/headers");
+  const cookieStore = await cookies();
+  const accessToken = cookieStore.get("leads_session")?.value;
+  return {
+    "Content-Type": "application/json",
+    ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+  };
+}
+
+async function fetchLeads(pageSize = 6): Promise<Lead[]> {
+  const API_URL = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ?? "";
+  if (!API_URL) return [];
+  const headers = await getAuthHeaders();
+  const res = await fetch(`${API_URL}/leads?pageSize=${pageSize}`, { headers, cache: "no-store" });
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data.data ?? [];
+}
+
+async function fetchStats() {
+  const API_URL = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ?? "";
+  if (!API_URL) return { total: 0, withContact: 0, withEmail: 0, avgRating: null, byStatus: [], categories: [] };
+
+  const headers = await getAuthHeaders();
+  const [totalRes, contactRes, emailRes, ratingRes, statusRes, catRes] = await Promise.all([
+    fetch(`${API_URL}/leads?pageSize=1`, { headers, cache: "no-store" }),
+    fetch(`${API_URL}/leads?hasPhone=true&pageSize=1`, { headers, cache: "no-store" }),
+    fetch(`${API_URL}/leads?hasEmail=true&pageSize=1`, { headers, cache: "no-store" }),
+    fetch(`${API_URL}/leads/stats/rating`, { headers, cache: "no-store" }),
+    fetch(`${API_URL}/leads/stats/by-status`, { headers, cache: "no-store" }),
+    fetch(`${API_URL}/leads/stats/by-category`, { headers, cache: "no-store" }),
   ]);
 
+  const total = totalRes.ok ? (await totalRes.json()).total ?? 0 : 0;
+  const withContact = contactRes.ok ? (await contactRes.json()).total ?? 0 : 0;
+  const withEmail = emailRes.ok ? (await emailRes.json()).total ?? 0 : 0;
+  const avgRating = ratingRes.ok ? (await ratingRes.json()).avg ?? null : null;
+  const byStatus = statusRes.ok ? await statusRes.json() : [];
+  const categories = catRes.ok ? await catRes.json() : [];
+
+  return { total, withContact, withEmail, avgRating, byStatus, categories };
+}
+
+export default async function DashboardPage() {
+  const [recent, stats] = await Promise.all([
+    fetchLeads(6),
+    fetchStats(),
+  ]);
+
+  const { total, withContact, withEmail, avgRating, byStatus, categories } = stats;
+
   const statusMap = Object.fromEntries(
-    byStatus.map((s) => [s.status, s._count._all])
+    byStatus.map((s: { status: string; count: number }) => [s.status, s.count])
   );
-  const withContact = await prisma.lead.count({
-    where: { phone: { not: null } },
-  });
-  const withEmail = await prisma.lead.count({ where: { email: { not: null } } });
-  const avgRating = await prisma.lead.aggregate({ _avg: { rating: true } });
 
   const cat = categories
-    .filter((c) => c.category)
-    .sort((a, b) => b._count._all - a._count._all)
+    .filter((c: { category: string | null }) => c.category)
+    .sort((a: { count: number }, b: { count: number }) => b.count - a.count)
     .slice(0, 5);
 
-  const stats = [
+  const statsCards = [
     {
       label: "Total de leads",
       value: total,
@@ -56,7 +95,7 @@ export default async function DashboardPage() {
     },
     {
       label: "Avaliação média",
-      value: avgRating._avg.rating ? avgRating._avg.rating.toFixed(1) : "—",
+      value: avgRating ? avgRating.toFixed(1) : "—",
       icon: Star,
       color: "bg-violet-50 text-violet-600",
     },
@@ -78,7 +117,7 @@ export default async function DashboardPage() {
       </div>
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        {stats.map((s) => (
+        {statsCards.map((s) => (
           <div key={s.label} className="card p-5">
             <div className={`mb-3 inline-flex rounded-xl p-2.5 ${s.color}`}>
               <s.icon className="h-5 w-5" />
@@ -106,7 +145,6 @@ export default async function DashboardPage() {
                 Nenhum lead ainda. Comece capturando na internet.
               </p>
               <Link href="/capturar" className="btn-primary mt-4">
-                <RadarIcon />
                 Capturar leads
               </Link>
             </div>
@@ -131,7 +169,7 @@ export default async function DashboardPage() {
                         {lead.city || lead.address || lead.category || "—"}
                       </p>
                     </div>
-                    <StatusBadge status={lead.status} />
+                    <StatusBadge status={lead.status as keyof typeof STATUS} />
                   </Link>
                 </li>
               ))}
@@ -177,7 +215,7 @@ export default async function DashboardPage() {
                 Principais categorias
               </h2>
               <ul className="space-y-2">
-                {cat.map((c) => (
+                {cat.map((c: { category: string; count: number }) => (
                   <li
                     key={c.category}
                     className="flex items-center justify-between text-sm"
@@ -186,7 +224,7 @@ export default async function DashboardPage() {
                       {c.category}
                     </span>
                     <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700">
-                      {c._count._all}
+                      {c.count}
                     </span>
                   </li>
                 ))}
@@ -196,20 +234,5 @@ export default async function DashboardPage() {
         </div>
       </div>
     </div>
-  );
-}
-
-function RadarIcon() {
-  return (
-    <svg
-      className="h-4 w-4"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      viewBox="0 0 24 24"
-    >
-      <path d="M12 3a9 9 0 1 0 9 9" strokeLinecap="round" />
-      <circle cx="12" cy="12" r="3" />
-    </svg>
   );
 }

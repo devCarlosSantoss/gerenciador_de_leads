@@ -1,4 +1,3 @@
-import { prisma } from "@/lib/db";
 import { markContacted } from "@/lib/prospecting";
 
 export async function POST(request: Request) {
@@ -17,18 +16,6 @@ export async function POST(request: Request) {
       backendStatus = result.status;
     } catch (err) {
       console.error("[api/prospecting/contacted] backend", err);
-    }
-
-    // Espelha no sistema legado (status CONTATADO) quando o lead foi migrado.
-    if (typeof body.externalId === "string" && body.externalId) {
-      await prisma.lead
-        .update({
-          where: { id: body.externalId },
-          data: { status: "CONTATADO" },
-        })
-        .catch((err) =>
-          console.error("[api/prospecting/contacted] legado", err),
-        );
     }
 
     return Response.json({ ok: true, status: backendStatus || "CONTATADO" });

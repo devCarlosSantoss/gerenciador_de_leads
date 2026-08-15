@@ -1,4 +1,3 @@
-import { prisma } from "@/lib/db";
 import { notFound } from "next/navigation";
 import { LeadDetail } from "@/components/lead-detail";
 import {
@@ -11,8 +10,28 @@ import {
   ProspectingApiError,
   resolveByExternalId,
 } from "@/lib/prospecting";
+import type { Lead } from "@/types/prisma";
 
 export const dynamic = "force-dynamic";
+
+async function getAuthHeaders(): Promise<HeadersInit> {
+  const { cookies } = await import("next/headers");
+  const cookieStore = await cookies();
+  const accessToken = cookieStore.get("leads_session")?.value;
+  return {
+    "Content-Type": "application/json",
+    ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+  };
+}
+
+async function fetchLead(id: string): Promise<Lead | null> {
+  const API_URL = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ?? "";
+  if (!API_URL) return null;
+  const headers = await getAuthHeaders();
+  const res = await fetch(`${API_URL}/leads/${id}`, { headers, cache: "no-store" });
+  if (!res.ok) return null;
+  return res.json();
+}
 
 export default async function LeadDetailPage({
   params,
@@ -20,7 +39,7 @@ export default async function LeadDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const lead = await prisma.lead.findUnique({ where: { id } });
+  const lead = await fetchLead(id);
   if (!lead) notFound();
 
   let initial: PanelData | null = null;

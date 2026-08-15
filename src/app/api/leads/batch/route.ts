@@ -1,4 +1,4 @@
-import { prisma } from "@/lib/db";
+import { importLeadsToBackend, type BackendImportItem } from "@/lib/prospecting";
 import { normalizePhone } from "@/lib/constants";
 import type { ScrapedLead } from "@/lib/scraper/types";
 
@@ -16,36 +16,13 @@ export async function POST(request: Request) {
 
     const existingPhones = new Set<string>();
     const existingNames = new Set<string>();
-    const all = await prisma.lead.findMany({
-      where: {
-        OR: [
-          { phone: { not: null } },
-          { source: source },
-        ],
-      },
-      select: { phone: true, name: true, city: true },
-    });
-    for (const l of all) {
-      if (l.phone) existingPhones.add(normalizePhone(l.phone));
-      existingNames.add(`${l.name.toLowerCase()}|${(l.city ?? "").toLowerCase()}`);
-    }
+
+    // Note: This would need backend API to check existing leads
+    // For now, we'll deduplicate locally and let backend handle conflicts
 
     let saved = 0;
     let duplicates = 0;
-    const toCreate: {
-      name: string;
-      phone: string | null;
-      whatsapp: string | null;
-      website: string | null;
-      address: string | null;
-      city: string | null;
-      state: string | null;
-      category: string | null;
-      rating: number | null;
-      reviews: number | null;
-      source: string;
-      sourceUrl: string | null;
-    }[] = [];
+    const items: BackendImportItem[] = [];
 
     for (const lead of leads) {
       if (!lead.name) continue;
@@ -64,25 +41,35 @@ export async function POST(request: Request) {
       }
       if (phone) existingPhones.add(phone);
       existingNames.add(nameKey);
-      toCreate.push({
-        name: lead.name,
-        phone,
-        whatsapp: lead.whatsapp ? normalizePhone(lead.whatsapp) : null,
-        website,
-        address: lead.address ?? null,
-        city: lead.city ?? null,
-        state: lead.state ?? null,
-        category: lead.category ?? null,
-        rating: lead.rating ?? null,
-        reviews: lead.reviews ?? null,
-        source,
+
+      const contacts: BackendImportItem["contacts"] = [];
+      if (phone) contacts.push({ type: "PHONE", value: phone });
+      if (lead.whatsapp) contacts.push({ type: "WHATSAPP", value: normalizePhone(lead.whatsapp) });
+
+      items.push({
+        sourceKey: source,
         sourceUrl: lead.sourceUrl ?? null,
+        externalId: null,
+        collectedAt: new Date().toISOString(),
+        company: {
+          name: lead.name,
+          category: lead.category ?? null,
+          address: lead.address ?? null,
+          city: lead.city ?? null,
+          state: lead.state ?? null,
+          website,
+          phone,
+          whatsapp: lead.whatsapp ? normalizePhone(lead.whatsapp) : null,
+          rating: lead.rating ?? null,
+          reviewsCount: lead.reviews ?? null,
+        },
+        contacts,
       });
     }
 
-    if (toCreate.length > 0) {
-      await prisma.lead.createMany({ data: toCreate });
-      saved = toCreate.length;
+    if (items.length > 0) {
+      const result = await importLeadsToBackend(items);
+      saved = result.accepted;
     }
 
     return Response.json({

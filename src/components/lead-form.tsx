@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { ArrowLeft, Save } from "lucide-react";
 import { STATUS_KEYS, STATUS, LEAD_SOURCES } from "@/lib/constants";
-import type { Lead } from "@prisma/client";
+import type { Lead } from "@/types/prisma";
 
 type LeadInput = {
   name: string;

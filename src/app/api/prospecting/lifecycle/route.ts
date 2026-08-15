@@ -1,4 +1,3 @@
-import { prisma } from "@/lib/db";
 import {
   confirmSend,
   copyMessageAction,
@@ -74,14 +73,6 @@ export async function POST(request: Request) {
         result = await transitionStatus(companyId, body.to);
         break;
       }
-    }
-
-    // Espelho no sistema legado: só o envio CONFIRMADO marca o lead legado
-    // como CONTATADO (abrir link / copiar não alteram o lead legado).
-    if (action === "confirm-send" && typeof body.externalId === "string" && body.externalId) {
-      await prisma.lead
-        .update({ where: { id: body.externalId }, data: { status: "CONTATADO" } })
-        .catch((err) => console.error("[api/prospecting/lifecycle] legado", err));
     }
 
     return Response.json({ ok: true, action, result });

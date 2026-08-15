@@ -1,13 +1,45 @@
-import { prisma } from "@/lib/db";
 import { STATUS_KEYS, STATUS } from "@/lib/constants";
 import { LeadsTable } from "@/components/leads-table";
 import { LeadFilters } from "@/components/lead-filters";
 import Link from "next/link";
 import { Plus } from "lucide-react";
+import type { Lead } from "@/types/prisma";
 
 export const dynamic = "force-dynamic";
 
 const PAGE_SIZE = 25;
+
+async function getAuthHeaders(): Promise<HeadersInit> {
+  const { cookies } = await import("next/headers");
+  const cookieStore = await cookies();
+  const accessToken = cookieStore.get("leads_session")?.value;
+  return {
+    "Content-Type": "application/json",
+    ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+  };
+}
+
+async function fetchLeads(params: {
+  q?: string;
+  status?: string;
+  page: number;
+  pageSize: number;
+}): Promise<{ data: Lead[]; total: number }> {
+  const API_URL = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ?? "";
+  if (!API_URL) return { data: [], total: 0 };
+
+  const headers = await getAuthHeaders();
+  const search = new URLSearchParams();
+  if (params.q) search.set("q", params.q);
+  if (params.status) search.set("status", params.status);
+  search.set("page", String(params.page));
+  search.set("pageSize", String(params.pageSize));
+
+  const res = await fetch(`${API_URL}/leads?${search}`, { headers, cache: "no-store" });
+  if (!res.ok) return { data: [], total: 0 };
+
+  return res.json();
+}
 
 export default async function LeadsPage({
   searchParams,
@@ -23,31 +55,12 @@ export default async function LeadsPage({
       : undefined;
   const page = Math.max(1, parseInt(typeof sp.page === "string" ? sp.page : "1") || 1);
 
-  const where = {
-    ...(q
-      ? {
-          OR: [
-            { name: { contains: q, mode: "insensitive" as const } },
-            { company: { contains: q, mode: "insensitive" as const } },
-            { email: { contains: q, mode: "insensitive" as const } },
-            { phone: { contains: q } },
-            { city: { contains: q, mode: "insensitive" as const } },
-            { category: { contains: q, mode: "insensitive" as const } },
-          ],
-        }
-      : {}),
-    ...(status ? { status: status as (typeof STATUS_KEYS)[number] } : {}),
-  };
-
-  const [total, leads] = await Promise.all([
-    prisma.lead.count({ where }),
-    prisma.lead.findMany({
-      where,
-      orderBy: { createdAt: "desc" },
-      skip: (page - 1) * PAGE_SIZE,
-      take: PAGE_SIZE,
-    }),
-  ]);
+  const { data: leads, total } = await fetchLeads({
+    q,
+    status,
+    page,
+    pageSize: PAGE_SIZE,
+  });
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 

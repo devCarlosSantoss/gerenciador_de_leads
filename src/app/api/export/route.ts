@@ -1,11 +1,35 @@
-import { prisma } from "@/lib/db";
-
 export const dynamic = "force-dynamic";
 
-export async function GET() {
-  const leads = await prisma.lead.findMany({ orderBy: { createdAt: "desc" } });
+async function getAuthHeaders(): Promise<HeadersInit> {
+  const { cookies } = await import("next/headers");
+  const cookieStore = await cookies();
+  const accessToken = cookieStore.get("leads_session")?.value;
+  return {
+    "Content-Type": "application/json",
+    ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+  };
+}
 
-  const headers = [
+export async function GET() {
+  const API_URL = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ?? "";
+  if (!API_URL) {
+    return new Response("API URL não configurada", { status: 500 });
+  }
+
+  const headers = await getAuthHeaders();
+  const res = await fetch(`${API_URL}/leads?pageSize=10000`, {
+    headers,
+    cache: "no-store",
+  });
+
+  if (!res.ok) {
+    return new Response("Erro ao buscar leads", { status: res.status });
+  }
+
+  const data = (await res.json()) as { data: Array<Record<string, unknown>> };
+  const leads = data.data;
+
+  const headersCSV = [
     "nome",
     "empresa",
     "email",
@@ -45,19 +69,19 @@ export async function GET() {
       l.state,
       l.category,
       l.rating,
-      l.reviews,
+      l.reviewsCount,
       l.status,
       (l.tags ?? []).join(";"),
       l.source,
       l.sourceUrl,
       l.notes,
-      l.createdAt.toISOString(),
+      l.createdAt,
     ]
       .map(esc)
       .join(",")
   );
 
-  const csv = "\uFEFF" + [headers.join(","), ...rows].join("\n");
+  const csv = "\uFEFF" + [headersCSV.join(","), ...rows].join("\n");
 
   return new Response(csv, {
     headers: {

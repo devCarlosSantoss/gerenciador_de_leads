@@ -1,4 +1,4 @@
-import { prisma } from "@/lib/db";
+import { importLeadsToBackend, type BackendImportItem } from "@/lib/prospecting";
 import { normalizePhone } from "@/lib/constants";
 
 export const dynamic = "force-dynamic";
@@ -101,42 +101,52 @@ export async function POST(request: Request) {
       );
     }
 
-    const records = rows
+    const items: BackendImportItem[] = rows
       .slice(1)
       .map((r) => {
         const get = (i: number) => (i >= 0 ? (r[i] ?? "").trim() : "");
+        const name = get(idx.name);
+        const phone = normalizePhone(get(idx.phone));
+        const whatsapp = normalizePhone(get(idx.whatsapp));
+        const contacts: BackendImportItem["contacts"] = [];
+        if (whatsapp) contacts.push({ type: "WHATSAPP", value: whatsapp });
+        else if (phone) contacts.push({ type: "PHONE", value: phone });
+        const email = get(idx.email);
+        if (email)
+          contacts.push({
+            type: "EMAIL",
+            value: email,
+            isPrimary: contacts.length === 0,
+          });
+
         return {
-          name: get(idx.name),
-          company: get(idx.company) || null,
-          email: get(idx.email) || null,
-          phone: normalizePhone(get(idx.phone)) || null,
-          whatsapp: normalizePhone(get(idx.whatsapp)) || null,
-          website: get(idx.website) || null,
-          address: get(idx.address) || null,
-          city: get(idx.city) || null,
-          state: get(idx.state).toUpperCase() || null,
-          category: get(idx.category) || null,
-          rating: parseFloat(get(idx.rating).replace(",", ".")) || null,
-          reviews: parseInt(get(idx.reviews)) || null,
-          status: STATUS_VALUES.includes(get(idx.status).toUpperCase() as (typeof STATUS_VALUES)[number])
-            ? (get(idx.status).toUpperCase() as (typeof STATUS_VALUES)[number])
-            : "NOVO",
-          tags: get(idx.tags)
-            ? get(idx.tags).split(/[;,]/).map((t) => t.trim()).filter(Boolean)
-            : [],
-          source: get(idx.source) || "csv",
+          sourceKey: "csv-import",
           sourceUrl: get(idx.sourceUrl) || null,
-          notes: get(idx.notes) || null,
+          externalId: null,
+          collectedAt: new Date().toISOString(),
+          company: {
+            name,
+            category: get(idx.category) || null,
+            address: get(idx.address) || null,
+            city: get(idx.city) || null,
+            state: get(idx.state).toUpperCase() || null,
+            website: get(idx.website) || null,
+            phone,
+            whatsapp,
+            rating: parseFloat(get(idx.rating).replace(",", ".")) || null,
+            reviewsCount: parseInt(get(idx.reviews)) || null,
+          },
+          contacts,
         };
       })
-      .filter((r) => r.name);
+      .filter((r) => r.company.name);
 
-    if (records.length === 0) {
+    if (items.length === 0) {
       return Response.json({ error: "Nenhuma linha válida no CSV" }, { status: 400 });
     }
 
-    const result = await prisma.lead.createMany({ data: records, skipDuplicates: false });
-    return Response.json({ imported: result.count, total: records.length });
+    const result = await importLeadsToBackend(items);
+    return Response.json({ imported: result.accepted, total: items.length });
   } catch (err) {
     console.error("[api/import]", err);
     return Response.json({ error: "Erro ao importar CSV" }, { status: 500 });

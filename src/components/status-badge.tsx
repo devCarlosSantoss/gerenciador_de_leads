@@ -1,5 +1,5 @@
 import { STATUS } from "@/lib/constants";
-import type { LeadStatus } from "@prisma/client";
+import type { LeadStatus } from "@/types/prisma";
 
 export function StatusBadge({ status }: { status: LeadStatus }) {
   const s = STATUS[status];

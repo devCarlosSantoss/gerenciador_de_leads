@@ -15,7 +15,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { STATUS, STATUS_KEYS } from "@/lib/constants";
-import type { Lead, LeadStatus } from "@prisma/client";
+import type { Lead, LeadStatus } from "@/types/prisma";
 
 export function LeadsTable({
   leads,
