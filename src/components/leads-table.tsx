@@ -15,7 +15,12 @@ import {
   Loader2,
 } from "lucide-react";
 import { STATUS, STATUS_KEYS } from "@/lib/constants";
-import type { Lead, LeadStatus } from "@/types/prisma";
+import type { LeadListItem, LeadStatus, ContactChannel } from "@/types/prisma";
+
+function getPrimaryContact(contacts: { type: ContactChannel; value: string }[], type: ContactChannel): string | undefined {
+  const c = contacts.find((c) => c.type === type && c.isPrimary) ?? contacts.find((c) => c.type === type);
+  return c?.value;
+}
 
 export function LeadsTable({
   leads,
@@ -25,7 +30,7 @@ export function LeadsTable({
   q,
   status,
 }: {
-  leads: Lead[];
+  leads: LeadListItem[];
   page: number;
   totalPages: number;
   total: number;
@@ -161,7 +166,7 @@ export function LeadsTable({
               <th className="px-4 py-3">Lead</th>
               <th className="hidden px-4 py-3 md:table-cell">Contato</th>
               <th className="hidden px-4 py-3 lg:table-cell">Local</th>
-              <th className="hidden px-4 py-3 xl:table-cell">Avaliação</th>
+              <th className="hidden px-4 py-3 xl:table-cell">Score</th>
               <th className="px-4 py-3">Status</th>
               <th className="px-4 py-3 text-right">Ações</th>
             </tr>
@@ -196,28 +201,23 @@ export function LeadsTable({
                     <span className="block truncate font-medium text-slate-900 hover:text-indigo-600">
                       {lead.name}
                     </span>
-                    {lead.company && (
-                      <span className="block truncate text-xs text-slate-500">
-                        {lead.company}
-                      </span>
-                    )}
                   </Link>
                 </td>
                 <td className="hidden px-4 py-3 md:table-cell">
                   <div className="space-y-0.5 text-slate-600">
-                    {lead.phone && (
+                    {getPrimaryContact(lead.contacts, "WHATSAPP") && (
                       <span className="flex items-center gap-1.5">
                         <Phone className="h-3.5 w-3.5 text-slate-400" />
-                        {lead.phone}
+                        {getPrimaryContact(lead.contacts, "WHATSAPP")}
                       </span>
                     )}
-                    {lead.email && (
+                    {getPrimaryContact(lead.contacts, "EMAIL") && (
                       <span className="flex max-w-[200px] items-center gap-1.5">
                         <Mail className="h-3.5 w-3.5 shrink-0 text-slate-400" />
-                        <span className="truncate">{lead.email}</span>
+                        <span className="truncate">{getPrimaryContact(lead.contacts, "EMAIL")}</span>
                       </span>
                     )}
-                    {!lead.phone && !lead.email && (
+                    {!getPrimaryContact(lead.contacts, "WHATSAPP") && !getPrimaryContact(lead.contacts, "EMAIL") && (
                       <span className="text-slate-400">Sem contato</span>
                     )}
                   </div>
@@ -233,15 +233,11 @@ export function LeadsTable({
                   </div>
                 </td>
                 <td className="hidden px-4 py-3 xl:table-cell">
-                  {lead.rating ? (
+                  {lead.score !== null && lead.scoreTier ? (
                     <span className="inline-flex items-center gap-1 font-medium text-slate-700">
                       <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" />
-                      {lead.rating.toFixed(1)}
-                      {lead.reviews ? (
-                        <span className="text-xs text-slate-400">
-                          ({lead.reviews})
-                        </span>
-                      ) : null}
+                      {lead.score}
+                      <span className="text-xs text-slate-400">({lead.scoreTier})</span>
                     </span>
                   ) : (
                     <span className="text-slate-400">—</span>
@@ -312,9 +308,7 @@ export function LeadsTable({
           <div className="flex gap-2">
             {page > 1 && (
               <Link
-                href={`/leads?page=${page - 1}${q ? `&q=${q}` : ""}${
-                  status ? `&status=${status}` : ""
-                }`}
+                href={`/leads?page=${page - 1}${q ? `&q=${q}` : ""}${status ? `&status=${status}` : ""}`}
                 className="btn-secondary h-8 px-3 text-xs"
               >
                 <ChevronLeft className="h-4 w-4" />
@@ -323,9 +317,7 @@ export function LeadsTable({
             )}
             {page < totalPages && (
               <Link
-                href={`/leads?page=${page + 1}${q ? `&q=${q}` : ""}${
-                  status ? `&status=${status}` : ""
-                }`}
+                href={`/leads?page=${page + 1}${q ? `&q=${q}` : ""}${status ? `&status=${status}` : ""}`}
                 className="btn-secondary h-8 px-3 text-xs"
               >
                 Próxima

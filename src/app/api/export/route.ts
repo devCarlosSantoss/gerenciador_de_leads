@@ -10,6 +10,11 @@ async function getAuthHeaders(): Promise<HeadersInit> {
   };
 }
 
+function getPrimaryContact(contacts: { type: string; value: string }[], type: string): string {
+  const c = contacts.find((c) => c.type === type);
+  return c?.value ?? "";
+}
+
 export async function GET() {
   const API_URL = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ?? "";
   if (!API_URL) {
@@ -31,22 +36,19 @@ export async function GET() {
 
   const headersCSV = [
     "nome",
-    "empresa",
-    "email",
+    "categoria",
     "telefone",
     "whatsapp",
+    "email",
     "website",
     "endereco",
     "cidade",
     "uf",
-    "categoria",
-    "avaliacao",
-    "avaliacoes",
     "status",
-    "tags",
+    "score",
+    "score_tier",
     "origem",
     "link_origem",
-    "notas",
     "criado_em",
   ];
 
@@ -56,25 +58,22 @@ export async function GET() {
     return s;
   };
 
-  const rows = leads.map((l) =>
+  const rows = leads.map((l: Record<string, unknown>) =>
     [
       l.name,
-      l.company,
-      l.email,
-      l.phone,
-      l.whatsapp,
-      l.website,
+      l.category,
+      getPrimaryContact(l.contacts as { type: string; value: string }[], "PHONE"),
+      getPrimaryContact(l.contacts as { type: string; value: string }[], "WHATSAPP"),
+      getPrimaryContact(l.contacts as { type: string; value: string }[], "EMAIL"),
+      l.websites?.[0]?.url ?? "",
       l.address,
       l.city,
       l.state,
-      l.category,
-      l.rating,
-      l.reviewsCount,
       l.status,
-      (l.tags ?? []).join(";"),
-      l.source,
+      l.score ?? "",
+      l.scoreTier ?? "",
+      l.dataOrigin,
       l.sourceUrl,
-      l.notes,
       l.createdAt,
     ]
       .map(esc)

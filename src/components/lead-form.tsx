@@ -4,18 +4,10 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { ArrowLeft, Save } from "lucide-react";
 import { STATUS_KEYS, STATUS, LEAD_SOURCES } from "@/lib/constants";
-import type { Lead } from "@/types/prisma";
+import type { LeadDetail, LeadContact, ContactChannel } from "@/types/prisma";
 
 type LeadInput = {
   name: string;
-  company: string;
-  email: string;
-  phone: string;
-  whatsapp: string;
-  website: string;
-  address: string;
-  city: string;
-  state: string;
   category: string;
   rating: string;
   reviews: string;
@@ -24,52 +16,59 @@ type LeadInput = {
   tags: string;
   source: string;
   sourceUrl: string;
+  address: string;
+  city: string;
+  state: string;
+  contacts: { type: ContactChannel; value: string; isPrimary: boolean }[];
 };
 
 const EMPTY: LeadInput = {
   name: "",
-  company: "",
-  email: "",
-  phone: "",
-  whatsapp: "",
-  website: "",
-  address: "",
-  city: "",
-  state: "",
   category: "",
   rating: "",
   reviews: "",
-  status: "NOVO",
+  status: "NEW",
   notes: "",
   tags: "",
   source: "manual",
   sourceUrl: "",
+  address: "",
+  city: "",
+  state: "",
+  contacts: [],
 };
 
-function toInput(lead?: Lead): LeadInput {
+function toInput(lead?: LeadDetail): LeadInput {
   if (!lead) return EMPTY;
+
+  const contacts: { type: ContactChannel; value: string; isPrimary: boolean }[] = [];
+
+  const phone = lead.contacts.find((c) => c.type === "PHONE");
+  const whatsapp = lead.contacts.find((c) => c.type === "WHATSAPP");
+  const email = lead.contacts.find((c) => c.type === "EMAIL");
+
+  if (phone) contacts.push({ type: "PHONE", value: phone.value, isPrimary: phone.isPrimary });
+  if (whatsapp) contacts.push({ type: "WHATSAPP", value: whatsapp.value, isPrimary: whatsapp.isPrimary });
+  if (email) contacts.push({ type: "EMAIL", value: email.value, isPrimary: email.isPrimary });
+
   return {
     name: lead.name,
-    company: lead.company ?? "",
-    email: lead.email ?? "",
-    phone: lead.phone ?? "",
-    whatsapp: lead.whatsapp ?? "",
-    website: lead.website ?? "",
+    category: lead.category ?? "",
+    rating: lead.rating != null ? String(lead.rating) : "",
+    reviews: lead.reviewsCount != null ? String(lead.reviewsCount) : "",
+    status: lead.status,
+    notes: lead.notes ?? "",
+    tags: "",
+    source: lead.dataOrigin ?? "manual",
+    sourceUrl: lead.sourceUrl ?? "",
     address: lead.address ?? "",
     city: lead.city ?? "",
     state: lead.state ?? "",
-    category: lead.category ?? "",
-    rating: lead.rating != null ? String(lead.rating) : "",
-    reviews: lead.reviews != null ? String(lead.reviews) : "",
-    status: lead.status,
-    notes: lead.notes ?? "",
-    tags: (lead.tags ?? []).join(", "),
-    source: lead.source ?? "manual",
-    sourceUrl: lead.sourceUrl ?? "",
+    contacts,
   };
 }
 
-export function LeadForm({ lead }: { lead?: Lead }) {
+export function LeadForm({ lead }: { lead?: LeadDetail }) {
   const router = useRouter();
   const isEdit = Boolean(lead);
   const [form, setForm] = useState<LeadInput>(() => toInput(lead));
@@ -80,6 +79,23 @@ export function LeadForm({ lead }: { lead?: Lead }) {
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
   ) => setForm((f) => ({ ...f, [key]: e.target.value }));
 
+  const setContact = (type: ContactChannel) => (value: string) => {
+    setForm((f) => {
+      const existing = f.contacts.findIndex((c) => c.type === type);
+      const contacts = [...f.contacts];
+      if (value) {
+        if (existing >= 0) {
+          contacts[existing] = { type, value, isPrimary: contacts[existing]?.isPrimary ?? false };
+        } else {
+          contacts.push({ type, value, isPrimary: contacts.length === 0 });
+        }
+      } else if (existing >= 0) {
+        contacts.splice(existing, 1);
+      }
+      return { ...f, contacts };
+    });
+  };
+
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
@@ -87,25 +103,17 @@ export function LeadForm({ lead }: { lead?: Lead }) {
     try {
       const body = {
         name: form.name,
-        company: form.company || null,
-        email: form.email || null,
-        phone: form.phone || null,
-        whatsapp: form.whatsapp || null,
-        website: form.website || null,
-        address: form.address || null,
-        city: form.city || null,
-        state: form.state || null,
         category: form.category || null,
         rating: form.rating ? parseFloat(form.rating) : null,
         reviews: form.reviews ? parseInt(form.reviews) : null,
         status: form.status,
         notes: form.notes || null,
-        tags: form.tags
-          .split(",")
-          .map((t) => t.trim())
-          .filter(Boolean),
         source: form.source || null,
         sourceUrl: form.sourceUrl || null,
+        address: form.address || null,
+        city: form.city || null,
+        state: form.state || null,
+        contacts: form.contacts,
       };
 
       const res = await fetch(isEdit ? `/api/leads/${lead!.id}` : "/api/leads", {
@@ -151,15 +159,6 @@ export function LeadForm({ lead }: { lead?: Lead }) {
             />
           </div>
           <div>
-            <label className="label">Empresa</label>
-            <input
-              className="input"
-              value={form.company}
-              onChange={set("company")}
-              placeholder="Ex.: Padaria Estrela"
-            />
-          </div>
-          <div>
             <label className="label">Categoria</label>
             <input
               className="input"
@@ -188,8 +187,8 @@ export function LeadForm({ lead }: { lead?: Lead }) {
             <label className="label">Telefone</label>
             <input
               className="input"
-              value={form.phone}
-              onChange={set("phone")}
+              value={form.contacts.find((c) => c.type === "PHONE")?.value ?? ""}
+              onChange={(e) => setContact("PHONE")(e.target.value)}
               placeholder="(11) 99999-9999"
             />
           </div>
@@ -197,8 +196,8 @@ export function LeadForm({ lead }: { lead?: Lead }) {
             <label className="label">WhatsApp</label>
             <input
               className="input"
-              value={form.whatsapp}
-              onChange={set("whatsapp")}
+              value={form.contacts.find((c) => c.type === "WHATSAPP")?.value ?? ""}
+              onChange={(e) => setContact("WHATSAPP")(e.target.value)}
               placeholder="(11) 99999-9999"
             />
           </div>
@@ -207,19 +206,9 @@ export function LeadForm({ lead }: { lead?: Lead }) {
             <input
               className="input"
               type="email"
-              value={form.email}
-              onChange={set("email")}
+              value={form.contacts.find((c) => c.type === "EMAIL")?.value ?? ""}
+              onChange={(e) => setContact("EMAIL")(e.target.value)}
               placeholder="contato@empresa.com"
-            />
-          </div>
-          <div>
-            <label className="label">Website</label>
-            <input
-              className="input"
-              type="url"
-              value={form.website}
-              onChange={set("website")}
-              placeholder="https://..."
             />
           </div>
         </div>
@@ -249,7 +238,7 @@ export function LeadForm({ lead }: { lead?: Lead }) {
       </div>
 
       <div className="card p-6">
-        <h2 className="mb-4 font-semibold text-slate-900">Avaliação e tags</h2>
+        <h2 className="mb-4 font-semibold text-slate-900">Avaliação e origem</h2>
         <div className="grid gap-4 sm:grid-cols-4">
           <div>
             <label className="label">Avaliação (0–5)</label>
@@ -271,15 +260,6 @@ export function LeadForm({ lead }: { lead?: Lead }) {
               min={0}
               value={form.reviews}
               onChange={set("reviews")}
-            />
-          </div>
-          <div className="sm:col-span-2">
-            <label className="label">Tags (separadas por vírgula)</label>
-            <input
-              className="input"
-              value={form.tags}
-              onChange={set("tags")}
-              placeholder="hot lead, atendimento, urgente"
             />
           </div>
           <div>

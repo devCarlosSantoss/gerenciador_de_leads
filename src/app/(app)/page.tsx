@@ -9,7 +9,7 @@ import {
   TrendingUp,
 } from "lucide-react";
 import { StatusBadge } from "@/components/status-badge";
-import type { Lead } from "@/types/prisma";
+import type { LeadListItem } from "@/types/prisma";
 
 export const dynamic = "force-dynamic";
 
@@ -23,7 +23,7 @@ async function getAuthHeaders(): Promise<HeadersInit> {
   };
 }
 
-async function fetchLeads(pageSize = 6): Promise<Lead[]> {
+async function fetchLeads(pageSize = 6): Promise<LeadListItem[]> {
   const API_URL = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ?? "";
   if (!API_URL) return [];
   const headers = await getAuthHeaders();
@@ -159,14 +159,9 @@ export default async function DashboardPage() {
                     <div className="min-w-0">
                       <p className="truncate font-medium text-slate-900">
                         {lead.name}
-                        {lead.company ? (
-                          <span className="ml-2 text-sm text-slate-500">
-                            {lead.company}
-                          </span>
-                        ) : null}
                       </p>
                       <p className="truncate text-sm text-slate-500">
-                        {lead.city || lead.address || lead.category || "—"}
+                        {lead.city || lead.category || "—"}
                       </p>
                     </div>
                     <StatusBadge status={lead.status as keyof typeof STATUS} />

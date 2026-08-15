@@ -1,9 +1,7 @@
+// Types baseados na resposta real da API do backend (LeadsController + LeadsService)
+
 export type LeadStatus =
-  | "NOVO"
-  | "CONTATADO"
-  | "QUALIFICADO"
-  | "PERDIDO"
-  | "CONVERTIDO"
+  | "NEW"
   | "ANALYZING"
   | "ANALYZED"
   | "MESSAGE_GENERATED"
@@ -14,8 +12,10 @@ export type LeadStatus =
   | "SEND_CONFIRMATION_PENDING"
   | "CONTACTED_CONFIRMED"
   | "REPLIED"
+  | "QUALIFIED"
   | "MEETING_BOOKED"
   | "PROPOSAL_SENT"
+  | "CONVERTED"
   | "NOT_INTERESTED"
   | "LOST"
   | "OPT_OUT"
@@ -148,7 +148,24 @@ export type EvidenceType =
   | "EXTERNAL_DOC"
   | "USER_INPUT";
 
-export interface Lead {
+// Response da listagem de leads (GET /leads)
+export interface LeadListItem {
+  id: string;
+  externalId: string | null;
+  name: string;
+  category: string | null;
+  city: string | null;
+  state: string | null;
+  status: LeadStatus;
+  contactStatus: LeadStatus | null;
+  websiteStatus: WebsiteStatus;
+  score: number | null;
+  scoreTier: ScoreTier | null;
+  contacts: { type: ContactChannel; value: string }[];
+}
+
+// Response detalhada do lead (GET /leads/:id)
+export interface LeadDetail {
   id: string;
   externalId: string | null;
   name: string;
@@ -177,6 +194,12 @@ export interface Lead {
   deletedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  contacts: LeadContact[];
+  websites: LeadWebsite[];
+  socialProfiles: SocialProfile[];
+  scores: LeadScore[];
+  analysisRuns: AnalysisRun[];
+  suppressed: boolean;
 }
 
 export interface LeadContact {
@@ -195,22 +218,6 @@ export interface LeadContact {
   deletedAt: string | null;
 }
 
-export interface LeadImport {
-  id: string;
-  sourceKey: string;
-  externalId: string | null;
-  leadName: string;
-  rawPayload: unknown;
-  collectedAt: string;
-  ingestedAt: string;
-  purpose: string | null;
-  dedupResult: DedupResult | null;
-  dedupReason: string | null;
-  matchedLeadId: string | null;
-  status: ImportStatus;
-  error: string | null;
-}
-
 export interface LeadWebsite {
   id: string;
   leadId: string;
@@ -226,6 +233,7 @@ export interface LeadWebsite {
   createdAt: string;
   updatedAt: string;
   deletedAt: string | null;
+  audits: WebsiteAudit[];
 }
 
 export interface WebsiteAudit {
@@ -279,6 +287,9 @@ export interface AnalysisRun {
   finishedAt: string | null;
   durationMs: number | null;
   createdAt: string;
+  findings: AnalysisFinding[];
+  recommendations: AnalysisRecommendation[];
+  conflicts: AnalysisConflict[];
 }
 
 export interface AnalysisFinding {
@@ -294,6 +305,7 @@ export interface AnalysisFinding {
   requiresHumanReview: boolean;
   messageEligible: boolean;
   createdAt: string;
+  evidence: AnalysisEvidence[];
 }
 
 export interface AnalysisEvidence {
@@ -458,4 +470,23 @@ export interface JobFailure {
   createdAt: string;
   resolvedAt: string | null;
   resolvedBy: string | null;
+}
+
+// API Response types
+export interface LeadsListResponse {
+  data: LeadListItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+export interface LeadDetailResponse extends LeadDetail {}
+
+export interface LeadByExternalResponse {
+  id: string;
+  name: string;
+  category: string | null;
+  city: string | null;
+  state: string | null;
+  status: LeadStatus;
 }
