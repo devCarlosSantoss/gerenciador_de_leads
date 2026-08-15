@@ -5,13 +5,13 @@ import {
   UnauthorizedException,
 } from "@nestjs/common";
 import { Reflector } from "@nestjs/core";
-import { JwtService, type AccessTokenPayload } from "./jwt.service";
+import { PersonalJwtService } from "./personal-jwt.service";
 import { IS_PUBLIC_KEY } from "./public.decorator";
 
 @Injectable()
-export class JwtAuthGuard implements CanActivate {
+export class PersonalAuthGuard implements CanActivate {
   constructor(
-    private readonly jwt: JwtService,
+    private readonly jwt: PersonalJwtService,
     private readonly reflector: Reflector,
   ) {}
 
@@ -20,21 +20,22 @@ export class JwtAuthGuard implements CanActivate {
       context.getHandler(),
       context.getClass(),
     ]);
-    if (isPublic) return true;
-
-    const request = context.switchToHttp().getRequest<{
-      headers: Record<string, string | undefined>;
-      user?: AccessTokenPayload;
-    }>();
-    const authHeader = request.headers["authorization"] ?? "";
-    const [scheme, token] = authHeader.split(" ");
-    if (scheme !== "Bearer" || !token) {
-      throw new UnauthorizedException("Não autenticado.");
+    if (isPublic) {
+      return true;
     }
 
+    const request = context.switchToHttp().getRequest();
+    const authHeader = request.headers.authorization;
+
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      throw new UnauthorizedException("Token de acesso não fornecido.");
+    }
+
+    const token = authHeader.slice(7);
     const payload = await this.jwt.verifyAccessToken(token);
+
     if (!payload) {
-      throw new UnauthorizedException("Sessão expirada ou inválida.");
+      throw new UnauthorizedException("Token inválido ou expirado.");
     }
 
     request.user = payload;

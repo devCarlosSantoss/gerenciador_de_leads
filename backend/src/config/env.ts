@@ -14,20 +14,15 @@ const envSchema = z.object({
   PORT: z.coerce.number().optional().default(3001),
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
 
-  // ── Autenticação ─────────────────────────────────────────────
-  // Segredo compartilhado com o frontend (usado para assinar/validar
-  // os access tokens JWT). Obrigatório e com no mínimo 32 caracteres.
+  // ── Autenticação Pessoal ──────────────────────────────────────
+  // Segredo para assinar/validar JWT (mín. 32 chars). Gere com: openssl rand -hex 32
   JWT_SECRET: z
     .string()
     .min(32, "JWT_SECRET deve ter no mínimo 32 caracteres (gere com `openssl rand -hex 32`)"),
   JWT_ACCESS_TTL: z.string().optional().default("15m"),
   JWT_REFRESH_TTL_DAYS: z.coerce.number().optional().default(7),
-  DEFAULT_ORG_ID: z.string().min(1).optional().default("default"),
-  // Admin inicial (usado APENAS pelo script `db:create-admin`).
-  // Não use em produção sem remover as variáveis depois da criação.
-  ADMIN_INITIAL_EMAIL: z.string().email().optional(),
-  ADMIN_INITIAL_PASSWORD: z.string().optional(),
-  ADMIN_INITIAL_NAME: z.string().optional().default("Administrador"),
+  // Senha inicial do admin (usada APENAS no bootstrap). DEVE ser removida do .env após setup.
+  PERSONAL_ADMIN_PASSWORD: z.string().min(12).optional(),
   // Policy de senha forte
   PASSWORD_MIN_LENGTH: z.coerce.number().optional().default(12),
   PASSWORD_MAX_LENGTH: z.coerce.number().optional().default(128),
@@ -37,10 +32,10 @@ const envSchema = z.object({
   // Rate limiting de login (Redis, por IP)
   LOGIN_RATE_LIMIT: z.coerce.number().optional().default(10),
   LOGIN_RATE_WINDOW_MS: z.coerce.number().optional().default(60 * 1000),
-  // Token de recuperação de senha
+  // Token de recuperação de senha (opcional, para uso futuro)
   RESET_TOKEN_TTL_MINUTES: z.coerce.number().optional().default(30),
   RESET_PASSWORD_BASE_URL: z.string().url().optional(),
-  // CORS explícito (lista separada por vírgula)
+  // CORS
   CORS_ORIGIN: z.string().optional().default("http://localhost:3000"),
 });
 

@@ -1,6 +1,6 @@
 import "server-only";
 import { cookies } from "next/headers";
-import { SignJWT, jwtVerify } from "jose";
+import { jwtVerify } from "jose";
 
 export const SESSION_COOKIE = "leads_session";
 export const REFRESH_COOKIE = "leads_refresh";
@@ -12,8 +12,7 @@ export interface SessionUser {
   sub: string;
   email: string;
   name: string;
-  role: string;
-  orgId: string;
+  mustChangePassword: boolean;
 }
 
 function getSecretKey(): Uint8Array {
@@ -37,25 +36,11 @@ export async function verifyToken(token: string): Promise<SessionUser | null> {
       sub: payload.sub,
       email: typeof payload.email === "string" ? payload.email : "",
       name: typeof payload.name === "string" ? payload.name : "",
-      role: typeof payload.role === "string" ? payload.role : "",
-      orgId: typeof payload.orgId === "string" ? payload.orgId : "",
+      mustChangePassword: typeof payload.mustChangePassword === "boolean" ? payload.mustChangePassword : false,
     };
   } catch {
     return null;
   }
-}
-
-/** Assina um access token (usado apenas em testes). */
-export async function signAccessToken(
-  payload: Omit<SessionUser, "sub"> & { sub: string },
-): Promise<string> {
-  const expiresAt = Math.floor(Date.now() / 1000) + ACCESS_TOKEN_TTL_SECONDS;
-  return new SignJWT({ ...payload, type: "access" })
-    .setProtectedHeader({ alg: "HS256", typ: "JWT" })
-    .setSubject(payload.sub)
-    .setIssuedAt()
-    .setExpirationTime(expiresAt)
-    .sign(getSecretKey());
 }
 
 export function sessionCookieOptions(maxAgeSeconds: number) {

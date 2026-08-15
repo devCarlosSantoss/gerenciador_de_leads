@@ -1,15 +1,8 @@
-import { BadRequestException, Controller, Get, Headers, NotFoundException, Param, Query } from "@nestjs/common";
+import { Controller, Get, NotFoundException, Param, Query } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { FindingsService } from "./findings.service";
 import { FindingsQueryDtoSchema } from "./analysis.dto";
 
-function resolveOrg(headers: Record<string, string | undefined>): string {
-  const org = headers["x-org-id"];
-  if (!org) throw new BadRequestException("Cabeçalho X-Org-ID obrigatório");
-  return org;
-}
-
-/** Findings/evidências estruturados de um lead (tela de análise auditável). */
 @Controller("leads/:id/findings")
 export class FindingsController {
   constructor(
@@ -21,22 +14,20 @@ export class FindingsController {
   async list(
     @Param("id") id: string,
     @Query() query: Record<string, unknown>,
-    @Headers() headers: Record<string, string | undefined>,
   ) {
-    const org = resolveOrg(headers);
     const q = FindingsQueryDtoSchema.parse(query ?? {});
 
-    const company = await this.prisma.company.findFirst({
-      where: { id, organizationId: org, deletedAt: null },
+    const lead = await this.prisma.lead.findFirst({
+      where: { id, deletedAt: null },
     });
-    if (!company) throw new NotFoundException("Lead não encontrado");
+    if (!lead) throw new NotFoundException("Lead não encontrado");
 
-    const run = await this.findings.getRunView(org, id, q.runId);
+    const run = await this.findings.getRunView(id, q.runId);
     if (!run) {
-      return { company: { id: company.id, name: company.name }, run: null };
+      return { lead: { id: lead.id, name: lead.name }, run: null };
     }
     return {
-      company: { id: company.id, name: company.name },
+      lead: { id: lead.id, name: lead.name },
       run,
     };
   }

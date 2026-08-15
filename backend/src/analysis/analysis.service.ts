@@ -63,7 +63,7 @@ FORMATO DE SAÍDA — retorne APENAS um JSON válido, SEM markdown e SEM campos 
   "requires_human_review": false
 }`;
 
-interface AnalysisCompany {
+interface AnalysisLead {
   id: string;
   name: string;
   category: string | null;
@@ -91,20 +91,15 @@ export class AnalysisService {
     private readonly findings: FindingsService,
   ) {}
 
-  /**
-   * Marca a análise como RUNNING assim que o worker pega o job. Se o registro
-   * QUEUED criado no enfileiramento não existir (ex.: chamada direta), cria um.
-   */
-  async begin(orgId: string, companyId: string): Promise<void> {
+  async begin(leadId: string): Promise<void> {
     const running = await this.prisma.analysisRun.updateMany({
-      where: { companyId, status: "QUEUED" },
+      where: { leadId, status: "QUEUED" },
       data: { status: "RUNNING", startedAt: new Date() },
     });
     if (running.count === 0) {
       await this.prisma.analysisRun.create({
         data: {
-          organizationId: orgId,
-          companyId,
+          leadId,
           provider: "pending",
           model: "pending",
           promptVersion: PROMPT_VERSION,
@@ -115,46 +110,44 @@ export class AnalysisService {
         },
       });
     }
-    this.logger.log(`Análise INICIADA — lead ${companyId}`);
-    await this.lifecycle.transition(orgId, companyId, "ANALYZING", { actorType: "worker" });
+    this.logger.log(`Análise INICIADA — lead ${leadId}`);
+    await this.lifecycle.transition(leadId, "ANALYZING", { actorType: "worker" });
   }
 
-  /** Executa a análise completa de um lead. Chamado pelo worker. */
-  async analyze(orgId: string, companyId: string): Promise<void> {
-    const company = (await this.prisma.company.findFirst({
-      where: { id: companyId, organizationId: orgId, deletedAt: null },
+  async analyze(leadId: string): Promise<void> {
+    const lead = (await this.prisma.lead.findFirst({
+      where: { id: leadId, deletedAt: null },
       include: {
         contacts: true,
         websites: { include: { audits: { orderBy: { auditedAt: "desc" }, take: 1 } } },
         socialProfiles: true,
       },
-    })) as AnalysisCompany | null;
-    if (!company) throw new Error(`Lead ${companyId} não encontrado`);
+    })) as AnalysisLead | null;
+    if (!lead) throw new Error(`Lead ${leadId} não encontrado`);
 
-    // Garante auditoria do site antes de alimentar a IA.
-    const website = company.websites[0];
+    const website = lead.websites[0];
     if (website) {
       const hasAudit = await this.prisma.websiteAudit.findFirst({
         where: { websiteId: website.id },
       });
       if (!hasAudit) {
-        this.logger.log(`Auditoria de site em andamento para ${company.name}...`);
+        this.logger.log(`Auditoria de site em andamento para ${lead.name}...`);
         try {
-          await this.siteAudit.audit(orgId, website.id);
-          this.logger.log(`Auditoria de site OK para ${company.name}`);
+          await this.siteAudit.audit(website.id);
+          this.logger.log(`Auditoria de site OK para ${lead.name}`);
         } catch (err) {
           this.logger.warn(`Auditoria de site falhou: ${(err as Error).message}`);
         }
       }
     }
 
-    await this.prisma.company.update({
-      where: { id: companyId },
-      data: { status: "EM_ANALISE" },
+    await this.prisma.lead.update({
+      where: { id: leadId },
+      data: { status: "ANALYZING" },
     });
 
-    const deterministicFindings = this.buildDeterministic(company);
-    const input = this.buildInput(company, deterministicFindings);
+    const deterministicFindings = this.buildDeterministic(lead);
+    const input = this.buildInput(lead, deterministicFindings);
     const provider = this.ai.provider;
     const { provider: providerName, model } = this.splitProviderName(provider.name);
 
@@ -162,7 +155,7 @@ export class AnalysisService {
     const t0 = Date.now();
     const startedAt = new Date(t0);
     try {
-      this.logger.log(`Chamada à IA (${provider.name}) para ${company.name}...`);
+      this.logger.log(`Chamada à IA (${provider.name}) para ${lead.name}...`);
       const res = await provider.generateStructured({
         systemPrompt: SYSTEM_PROMPT,
         userPrompt: input,
@@ -171,56 +164,54 @@ export class AnalysisService {
       });
       output = res.value;
       this.logger.log(
-        `IA respondeu em ${Date.now() - t0}ms (${provider.name}) para ${company.name}`,
+        `IA respondeu em ${Date.now() - t0}ms (${provider.name}) para ${lead.name}`,
       );
     } catch (err) {
       const message = (err as Error).message;
-      await this.markFailed(companyId, message);
-      await this.prisma.company.update({
-        where: { id: companyId },
-        data: { status: "ERRO" },
+      await this.markFailed(leadId, message);
+      await this.prisma.lead.update({
+        where: { id: leadId },
+        data: { status: "ERROR" },
       });
-      await this.lifecycle.transition(orgId, companyId, "ERROR", { actorType: "worker" });
-      this.logger.error(`Análise FALHOU para ${company.name}: ${message}`);
+      await this.lifecycle.transition(leadId, "ERROR", { actorType: "worker" });
+      this.logger.error(`Análise FALHOU para ${lead.name}: ${message}`);
       throw err;
     }
 
     const finishedAt = new Date();
-    const result = await this.findings.persistStructuredAnalysis(orgId, companyId, {
+    const result = await this.findings.persistStructuredAnalysis(leadId, {
       provider: providerName,
       model,
       promptVersion: PROMPT_VERSION,
       output,
       deterministicFindings,
-      inputSnapshot: this.safeSnapshot(company) as unknown as Prisma.InputJsonValue,
+      inputSnapshot: this.safeSnapshot(lead) as unknown as Prisma.InputJsonValue,
       startedAt,
       finishedAt,
       durationMs: Math.max(0, finishedAt.getTime() - t0),
     });
 
-    await this.prisma.company.update({
-      where: { id: companyId },
+    await this.prisma.lead.update({
+      where: { id: leadId },
       data: {
         websiteStatus: this.mapWebsiteStatus(output.website_status, website?.status) as never,
-        status: "AGUARDANDO_REVISAO",
+        status: "ANALYZED",
       },
     });
-    await this.lifecycle.transition(orgId, companyId, "ANALYZED", { actorType: "worker" });
+    await this.lifecycle.transition(leadId, "ANALYZED", { actorType: "worker" });
     this.logger.log(
-      `Análise CONCLUÍDA para ${company.name} (status=${result.status}, findings=${result.findingsCount})`,
+      `Análise CONCLUÍDA para ${lead.name} (status=${result.status}, findings=${result.findingsCount})`,
     );
 
-    // Score determinístico (0-100) calculado após a análise.
     try {
-      await this.scoring.computeFor(orgId, companyId);
+      await this.scoring.computeFor(leadId);
     } catch (err) {
       this.logger.warn(`Falha ao calcular score: ${(err as Error).message}`);
     }
   }
 
-  /** Fatos determinísticos extraídos da auditoria (DNS/HTTP/HTML/PageSpeed) + dados do lead. */
-  private buildDeterministic(company: AnalysisCompany): FindingPersistInput[] {
-    const website = company.websites[0];
+  private buildDeterministic(lead: AnalysisLead): FindingPersistInput[] {
+    const website = lead.websites[0];
     const audit = website?.audits?.[0];
     const metrics = (audit?.metrics ?? {}) as Record<string, unknown>;
     const checks = (audit?.checks ?? {}) as Record<string, unknown>;
@@ -238,25 +229,24 @@ export class AnalysisService {
       pageSpeedMetrics,
       pageSpeedChecks,
       websiteExists: Boolean(website),
-      websiteStatus: company.websiteStatus,
-      hasWhatsappContact: company.contacts.some((c) => c.type === "WHATSAPP" && c.isValid),
-      hasValidContact: company.contacts.some((c) => c.isValid),
-      socialProfiles: company.socialProfiles,
-      reviewsCount: company.reviewsCount,
-      rating: company.rating,
+      websiteStatus: lead.websiteStatus,
+      hasWhatsappContact: lead.contacts.some((c) => c.type === "WHATSAPP" && c.isValid),
+      hasValidContact: lead.contacts.some((c) => c.isValid),
+      socialProfiles: lead.socialProfiles,
+      reviewsCount: lead.reviewsCount,
+      rating: lead.rating,
     });
   }
 
-  /** Marca o run RUNNING atual como FAILED (falha da IA/validação). */
-  private async markFailed(companyId: string, error: string): Promise<void> {
+  private async markFailed(leadId: string, error: string): Promise<void> {
     const running = await this.prisma.analysisRun.findFirst({
-      where: { companyId, status: "RUNNING" },
+      where: { leadId, status: "RUNNING" },
       orderBy: { createdAt: "desc" },
     });
     const startedAt = running?.startedAt ?? new Date();
     const now = new Date();
     await this.prisma.analysisRun.updateMany({
-      where: { companyId, status: "RUNNING" },
+      where: { leadId, status: "RUNNING" },
       data: {
         status: "FAILED",
         error,
@@ -267,27 +257,25 @@ export class AnalysisService {
     });
   }
 
-  /** Divide "gemini:model" / "groq:model" em provider e model para o analysis_run. */
   private splitProviderName(name: string): { provider: string; model: string } {
     const idx = name.indexOf(":");
     if (idx === -1) return { provider: name, model: "unknown" };
     return { provider: name.slice(0, idx), model: name.slice(idx + 1) };
   }
 
-  /** Monta o prompt com apenas dados verificáveis (evita prompt injection de campos brutos). */
-  private buildInput(company: AnalysisCompany, deterministicFindings: FindingPersistInput[]): string {
-    const website = company.websites[0];
+  private buildInput(lead: AnalysisLead, deterministicFindings: FindingPersistInput[]): string {
+    const website = lead.websites[0];
     const audits = website?.audits?.[0];
     return JSON.stringify(
       {
         company: {
-          name: company.name,
-          category: company.category,
-          address: company.address,
-          city: company.city,
-          state: company.state,
-          rating: company.rating,
-          reviews_count: company.reviewsCount,
+          name: lead.name,
+          category: lead.category,
+          address: lead.address,
+          city: lead.city,
+          state: lead.state,
+          rating: lead.rating,
+          reviews_count: lead.reviewsCount,
         },
         website: website
           ? { url: website.url, status: website.status, audit: audits ?? null }
@@ -305,17 +293,16 @@ export class AnalysisService {
             metric_value: e.metricValue,
           })),
         })),
-        social_profiles: company.socialProfiles.map((s) => `${s.platform}:${s.handle}`),
-        contacts_available: company.contacts.map((c) => `${c.type}:${c.isValid ? "valid" : "invalid"}`),
+        social_profiles: lead.socialProfiles.map((s) => `${s.platform}:${s.handle}`),
+        contacts_available: lead.contacts.map((c) => `${c.type}:${c.isValid ? "valid" : "invalid"}`),
       },
       null,
       2,
     );
   }
 
-  private safeSnapshot(company: AnalysisCompany): Record<string, string | null> {
-    // Snapshot SEM PII de telefones/e-mails — só contexto para auditoria.
-    return { name: company.name, category: company.category, city: company.city, state: company.state };
+  private safeSnapshot(lead: AnalysisLead): Record<string, string | null> {
+    return { name: lead.name, category: lead.category, city: lead.city, state: lead.state };
   }
 
   private mapWebsiteStatus(

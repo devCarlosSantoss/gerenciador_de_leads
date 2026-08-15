@@ -1,22 +1,20 @@
 import { Module } from "@nestjs/common";
-import { AuthController } from "./auth.controller";
-import { AuthService } from "./auth.service";
+import { PersonalAuthController } from "./personal-auth.controller";
+import { PersonalAuthService } from "./personal-auth.service";
 import { PasswordService } from "./password.service";
-import { JwtService } from "./jwt.service";
+import { PersonalJwtService } from "./personal-jwt.service";
 import { RateLimitService } from "./rate-limit.service";
-import { MfaService } from "./mfa.service";
-import { JwtAuthGuard } from "./jwt-auth.guard";
+import { PersonalAuthGuard } from "./personal-auth.guard";
 
 @Module({
-  controllers: [AuthController],
+  controllers: [PersonalAuthController],
   providers: [
-    AuthService,
+    PersonalAuthService,
     PasswordService,
-    JwtService,
+    PersonalJwtService,
     RateLimitService,
-    MfaService,
-    JwtAuthGuard,
+    PersonalAuthGuard,
   ],
-  exports: [JwtService, PasswordService, JwtAuthGuard, AuthService],
+  exports: [PersonalJwtService, PasswordService, PersonalAuthGuard, PersonalAuthService],
 })
 export class AuthModule {}

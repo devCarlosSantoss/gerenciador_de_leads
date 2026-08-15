@@ -1,6 +1,6 @@
 /**
  * Máquina de estados do ciclo de vida de contato — fonte única de verdade
- * para o frontend e o backend. Mantenha em sincronia com o enum `ContactStatus`
+ * para o frontend e o backend. Mantenha em sincronia com o enum `LeadStatus`
  * definido em `backend/prisma/schema.prisma`.
  *
  * Regra central: ABRIR o link do WhatsApp ou COPIAR a mensagem NUNCA confirma
@@ -8,13 +8,13 @@
  * CONTACTED_CONFIRMED.
  */
 
-export const CONTACT_STATUSES = [
+export const LEAD_STATUSES = [
   "NEW",
   "ANALYZING",
   "ANALYZED",
   "MESSAGE_GENERATED",
-  "PENDING_APPROVAL",
-  "APPROVED",
+  "MESSAGE_PENDING_APPROVAL",
+  "MESSAGE_APPROVED",
   "CHAT_LINK_OPENED",
   "MESSAGE_COPIED",
   "SEND_CONFIRMATION_PENDING",
@@ -32,7 +32,7 @@ export const CONTACT_STATUSES = [
   "ERROR",
 ] as const;
 
-export type ContactStatus = (typeof CONTACT_STATUSES)[number];
+export type LeadStatus = (typeof LEAD_STATUSES)[number];
 
 export const CONTACT_ATTEMPT_ACTIONS = [
   "LINK_OPENED",
@@ -45,13 +45,13 @@ export const CONTACT_ATTEMPT_ACTIONS = [
 export type ContactAttemptAction = (typeof CONTACT_ATTEMPT_ACTIONS)[number];
 
 /** Rótulos PT-BR para exibição na interface. */
-export const CONTACT_STATUS_LABELS: Record<ContactStatus, string> = {
+export const LEAD_STATUS_LABELS: Record<LeadStatus, string> = {
   NEW: "Novo",
   ANALYZING: "Em análise",
   ANALYZED: "Analisado",
   MESSAGE_GENERATED: "Mensagem gerada",
-  PENDING_APPROVAL: "Aguardando aprovação",
-  APPROVED: "Aprovado",
+  MESSAGE_PENDING_APPROVAL: "Aguardando aprovação",
+  MESSAGE_APPROVED: "Aprovado",
   CHAT_LINK_OPENED: "Link aberto",
   MESSAGE_COPIED: "Mensagem copiada",
   SEND_CONFIRMATION_PENDING: "Aguardando confirmação de envio",
@@ -70,16 +70,12 @@ export const CONTACT_STATUS_LABELS: Record<ContactStatus, string> = {
 };
 
 /** Transições válidas entre estados. Inclui somente o que é permitido. */
-export const ALLOWED_TRANSITIONS: Record<ContactStatus, readonly ContactStatus[]> = {
-  // NEW também aceita avanços diretos para o pipeline de mensagens e para
-  // CONTACTED_CONFIRMED: representa o recontato explícito do operador (lead
-  // reativado) e a chegada de leads legados. As guardas de mensagem aprovada,
-  // suppression e duplicidade continuam valendo.
+export const ALLOWED_TRANSITIONS: Record<LeadStatus, readonly LeadStatus[]> = {
   NEW: [
     "ANALYZING",
     "MESSAGE_GENERATED",
-    "PENDING_APPROVAL",
-    "APPROVED",
+    "MESSAGE_PENDING_APPROVAL",
+    "MESSAGE_APPROVED",
     "CONTACTED_CONFIRMED",
     "ERROR",
     "OPT_OUT",
@@ -87,10 +83,10 @@ export const ALLOWED_TRANSITIONS: Record<ContactStatus, readonly ContactStatus[]
     "ARCHIVED",
   ],
   ANALYZING: ["ANALYZED", "ERROR", "OPT_OUT", "BLOCKED", "ARCHIVED"],
-  ANALYZED: ["MESSAGE_GENERATED", "PENDING_APPROVAL", "ERROR", "OPT_OUT", "BLOCKED", "ARCHIVED"],
-  MESSAGE_GENERATED: ["PENDING_APPROVAL", "APPROVED", "ERROR", "OPT_OUT", "BLOCKED", "ARCHIVED"],
-  PENDING_APPROVAL: ["APPROVED", "ERROR", "OPT_OUT", "BLOCKED", "ARCHIVED"],
-  APPROVED: [
+  ANALYZED: ["MESSAGE_GENERATED", "MESSAGE_PENDING_APPROVAL", "ERROR", "OPT_OUT", "BLOCKED", "ARCHIVED"],
+  MESSAGE_GENERATED: ["MESSAGE_PENDING_APPROVAL", "MESSAGE_APPROVED", "ERROR", "OPT_OUT", "BLOCKED", "ARCHIVED"],
+  MESSAGE_PENDING_APPROVAL: ["MESSAGE_APPROVED", "ERROR", "OPT_OUT", "BLOCKED", "ARCHIVED"],
+  MESSAGE_APPROVED: [
     "CHAT_LINK_OPENED",
     "MESSAGE_COPIED",
     "SEND_CONFIRMATION_PENDING",
@@ -187,40 +183,10 @@ export const ALLOWED_TRANSITIONS: Record<ContactStatus, readonly ContactStatus[]
   ERROR: ["NEW", "ANALYZING", "ARCHIVED", "OPT_OUT", "BLOCKED"],
 };
 
-/**
- * Mapeamento para o status legado (`Company.status` / `LeadStatus`) usado pela
- * UI atual e pela compatibilidade. Mantém a listagem existente funcionando
- * enquanto a máquina de estados assume o controle.
- */
-export const LEGACY_STATUS_MAP: Record<ContactStatus, string> = {
-  NEW: "NOVO",
-  ANALYZING: "EM_ANALISE",
-  ANALYZED: "AGUARDANDO_REVISAO",
-  MESSAGE_GENERATED: "AGUARDANDO_REVISAO",
-  PENDING_APPROVAL: "AGUARDANDO_REVISAO",
-  APPROVED: "PRONTO_PARA_CONTATO",
-  CHAT_LINK_OPENED: "PRONTO_PARA_CONTATO",
-  MESSAGE_COPIED: "PRONTO_PARA_CONTATO",
-  SEND_CONFIRMATION_PENDING: "PRONTO_PARA_CONTATO",
-  CONTACTED_CONFIRMED: "ENVIADO",
-  REPLIED: "RESPONDEU",
-  QUALIFIED: "INTERESSADO",
-  MEETING_BOOKED: "REUNIAO_MARCADA",
-  PROPOSAL_SENT: "INTERESSADO",
-  CONVERTED: "CONVERTIDO",
-  NOT_INTERESTED: "SEM_INTERESSE",
-  LOST: "SEM_INTERESSE",
-  OPT_OUT: "OPT_OUT",
-  BLOCKED: "BLOQUEADO",
-  ARCHIVED: "ARQUIVADO",
-  ERROR: "ERRO",
-};
-
-export function legacyStatusFor(status: ContactStatus): string {
-  return LEGACY_STATUS_MAP[status];
+export function legacyStatusFor(status: LeadStatus): string {
+  return status;
 }
 
-/** Tipos de evento de atividade registrados em `activity_events`. */
 export const ACTIVITY_EVENT_TYPES = {
   CHAT_LINK_OPENED: "chat_link.opened",
   MESSAGE_COPIED: "message.copied",
@@ -232,6 +198,6 @@ export const ACTIVITY_EVENT_TYPES = {
   RECONTACTED: "contact.recontacted",
 } as const;
 
-export function isAllowedTransition(from: ContactStatus, to: ContactStatus): boolean {
+export function isAllowedTransition(from: LeadStatus, to: LeadStatus): boolean {
   return ALLOWED_TRANSITIONS[from]?.includes(to) ?? false;
 }

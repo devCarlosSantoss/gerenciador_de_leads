@@ -71,14 +71,6 @@ function valueKey(v: unknown): string {
   return `s:${String(v ?? "")}`;
 }
 
-/**
- * Validação de negócio de um finding produzido pela IA:
- * - Fato sem evidência suficiente → requer revisão humana, não elegível.
- * - Inferência com confiança abaixo do limiar → requer revisão humana.
- * - Inferência marcada como fato → nunca elegível.
- * - Apenas findings de fato/inferência listados em `message_eligible_findings`
- *   (e que passem nas regras) podem personalizar mensagens.
- */
 export function evaluateFinding(
   f: { category: FindingCategory; sourceType: EvidenceSourceType; confidence?: number; evidence: EvidencePersistInput[] },
   listedEligible: boolean,
@@ -90,7 +82,6 @@ export function evaluateFinding(
     const confidenceOk = typeof f.confidence === "number" && f.confidence >= MESSAGE_CONFIDENCE_THRESHOLD;
     if (!confidenceOk) requiresHumanReview = true;
     if (f.sourceType !== "AI_INFERENCE") {
-      // inferência apresentada como fato determinístico — insegura
       requiresHumanReview = true;
     }
     messageEligible = listedEligible && confidenceOk && f.evidence.length > 0;
@@ -108,7 +99,6 @@ export function evaluateFinding(
   return { requiresHumanReview, messageEligible };
 }
 
-/** Detecta conflitos entre findings do mesmo run (mesmo tema, valores divergentes). */
 export function detectConflicts(findings: Array<{ id: string; category: FindingCategory; claim: string; value: unknown }>) {
   const byKey = new Map<string, typeof findings>();
   for (const f of findings) {
@@ -150,18 +140,11 @@ export class FindingsService {
 
   constructor(private readonly prisma: PrismaService) {}
 
-  /**
-   * Persiste a análise estruturada de forma transacional: atualiza o run,
-   * cria findings (determinísticos + da IA), evidências sanitizadas com hash,
-   * recomendações e conflitos. Nunca sobrescreve runs anteriores.
-   */
   async persistStructuredAnalysis(
-    orgId: string,
-    companyId: string,
+    leadId: string,
     input: PersistStructuredInput,
   ): Promise<{ runId: string; findingsCount: number; requiresHumanReview: boolean; status: string }> {
     const output = input.output;
-    const structured: StructuredAnalysis = output; // o contrato obrigatório está presente no tipo LlmAnalysis
 
     const listedEligible = new Set(output.message_eligible_findings);
 
@@ -194,13 +177,12 @@ export class FindingsService {
     return this.prisma.$transaction(async (tx) => {
       const run =
         (await tx.analysisRun.findFirst({
-          where: { companyId, status: "RUNNING" },
+          where: { leadId, status: "RUNNING" },
           orderBy: { createdAt: "desc" },
         })) ??
         (await tx.analysisRun.create({
           data: {
-            organizationId: orgId,
-            companyId,
+            leadId,
             provider: input.provider,
             model: input.model,
             promptVersion: input.promptVersion,
@@ -231,8 +213,7 @@ export class FindingsService {
       for (const f of allFindings) {
         const created = await tx.analysisFinding.create({
           data: {
-            organizationId: orgId,
-            leadId: companyId,
+            leadId,
             analysisRunId: run.id,
             category: f.category,
             claim: f.claim.slice(0, 500),
@@ -250,7 +231,6 @@ export class FindingsService {
           const extractedText = cleanEvidenceText(ev.extractedText);
           await tx.analysisEvidence.create({
             data: {
-              organizationId: orgId,
               findingId: created.id,
               url: ev.url?.slice(0, 2048) ?? null,
               evidenceType: ev.evidenceType,
@@ -275,8 +255,7 @@ export class FindingsService {
       for (const op of output.opportunities) {
         await tx.analysisRecommendation.create({
           data: {
-            organizationId: orgId,
-            leadId: companyId,
+            leadId,
             analysisRunId: run.id,
             kind: "opportunity",
             title: op.title.slice(0, 300),
@@ -294,7 +273,6 @@ export class FindingsService {
       for (const c of conflicts) {
         await tx.analysisConflict.create({
           data: {
-            organizationId: orgId,
             analysisRunId: run.id,
             fromFindingId: findingIds.get(c.fromFindingId) ?? run.id,
             toFindingId: findingIds.get(c.toFindingId) ?? run.id,
@@ -313,7 +291,6 @@ export class FindingsService {
     });
   }
 
-  /** Converte um finding do contrato da IA (camelCase) para persistência. */
   private toPersistFinding(
     f: StructuredAnalysis["facts"][number],
     category: FindingCategory,
@@ -359,21 +336,16 @@ export class FindingsService {
     return map[et] ?? "TEXT";
   }
 
-  /**
-   * Findings aprovados para personalizar mensagens (filtro de evidências
-   * permitidas). Só fatos/inferências com evidência, sem revisão humana
-   * obrigatória e com confiança suficiente entram aqui.
-   */
-  async getEligibleFindings(orgId: string, companyId: string): Promise<FindingView[]> {
+  async getEligibleFindings(leadId: string): Promise<FindingView[]> {
     const run = await this.prisma.analysisRun.findFirst({
-      where: { companyId, organizationId: orgId, status: { not: "FAILED" } },
+      where: { leadId, status: { not: "FAILED" } },
       orderBy: { createdAt: "desc" },
     });
     if (!run) return [];
 
     const findings = await this.prisma.analysisFinding.findMany({
       where: {
-        leadId: companyId,
+        leadId,
         analysisRunId: run.id,
         messageEligible: true,
         requiresHumanReview: false,
@@ -386,12 +358,10 @@ export class FindingsService {
     return findings.map((f) => this.toView(f));
   }
 
-  /** Visão completa do run + findings + evidências + recomendações + conflitos. */
-  async getRunView(orgId: string, companyId: string, runId?: string): Promise<AnalysisRunView | null> {
+  async getRunView(leadId: string, runId?: string): Promise<AnalysisRunView | null> {
     const run = await this.prisma.analysisRun.findFirst({
       where: {
-        companyId,
-        organizationId: orgId,
+        leadId,
         ...(runId ? { id: runId } : {}),
       },
       orderBy: { createdAt: "desc" },

@@ -3,7 +3,6 @@ import { QueueService } from "../queue/queue.service";
 import { LeadsService } from "./leads.service";
 
 interface IngestJobData {
-  organizationId: string;
   importIds: string[];
 }
 
@@ -16,7 +15,7 @@ export class IngestWorker implements OnModuleInit {
 
   onModuleInit() {
     this.queue.registerWorker<IngestJobData>("ingest", async (job) => {
-      await this.leads.processBatch(job.data.organizationId, job.data.importIds);
+      await this.leads.processBatch(job.data.importIds);
     });
   }
 }

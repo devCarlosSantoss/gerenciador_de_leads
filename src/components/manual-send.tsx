@@ -15,7 +15,7 @@ import {
   Send,
 } from "lucide-react";
 import type { ChatLink } from "@/lib/prospecting";
-import { CONTACT_STATUS_LABELS } from "@shared/contact-lifecycle";
+import { LEAD_STATUS_LABELS } from "@shared/contact-lifecycle";
 
 export interface ManualSendItem {
   lead: {
@@ -194,9 +194,9 @@ export function ManualSendList({ items }: { items: ManualSendItem[] }) {
               <h2 className="flex items-center gap-2 font-semibold text-slate-900">
                 {item.lead.name}
                 {item.lead.contactStatus &&
-                  CONTACT_STATUS_LABELS[item.lead.contactStatus as keyof typeof CONTACT_STATUS_LABELS] && (
+                  LEAD_STATUS_LABELS[item.lead.contactStatus as keyof typeof LEAD_STATUS_LABELS] && (
                     <span className="badge bg-sky-50 text-sky-700 ring-sky-600/20">
-                      {CONTACT_STATUS_LABELS[item.lead.contactStatus as keyof typeof CONTACT_STATUS_LABELS]}
+                      {LEAD_STATUS_LABELS[item.lead.contactStatus as keyof typeof LEAD_STATUS_LABELS]}
                     </span>
                   )}
               </h2>

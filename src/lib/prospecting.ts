@@ -2,7 +2,6 @@ import "server-only";
 import { ensureAccessToken } from "@/lib/session";
 
 const BASE_URL = process.env.PROSPECTING_API_URL?.replace(/\/$/, "") ?? "";
-const ORG_ID = process.env.PROSPECTING_ORG_ID ?? "";
 
 export class ProspectingApiError extends Error {
   constructor(
@@ -96,9 +95,9 @@ export interface BackendImportItem {
 }
 
 async function fetchApi<T>(path: string, init?: RequestInit): Promise<T> {
-  if (!BASE_URL || !ORG_ID) {
+  if (!BASE_URL) {
     throw new ProspectingApiError(
-      "Configuração ausente: defina PROSPECTING_API_URL e PROSPECTING_ORG_ID no .env",
+      "Configuração ausente: defina PROSPECTING_API_URL no .env",
       500,
     );
   }
@@ -111,7 +110,6 @@ async function fetchApi<T>(path: string, init?: RequestInit): Promise<T> {
     cache: "no-store",
     ...init,
     headers: {
-      "x-org-id": ORG_ID,
       Authorization: `Bearer ${accessToken}`,
       ...(init?.headers ?? {}),
     },

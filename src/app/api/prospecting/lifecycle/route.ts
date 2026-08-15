@@ -9,7 +9,7 @@ import {
   ProspectingApiError,
   type LifecycleTransitionResult,
 } from "@/lib/prospecting";
-import { CONTACT_STATUSES } from "@shared/contact-lifecycle";
+import { LEAD_STATUSES } from "@shared/contact-lifecycle";
 
 const ACTIONS = ["chat-link-open", "copy", "confirm-send", "reply", "opt-out", "transition"] as const;
 type Action = (typeof ACTIONS)[number];
@@ -65,7 +65,7 @@ export async function POST(request: Request) {
         );
         break;
       case "transition": {
-        if (typeof body.to !== "string" || !CONTACT_STATUSES.includes(body.to as never)) {
+        if (typeof body.to !== "string" || !LEAD_STATUSES.includes(body.to as never)) {
           return Response.json(
             { error: "to inválido (use um dos estados do ciclo de vida)" },
             { status: 400 },

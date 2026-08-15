@@ -126,7 +126,7 @@ export function Shell({
                   {user.email}
                 </p>
                 <p className="text-xs text-slate-400">
-                  {user.role === "ADMIN" ? "Administrador" : user.role}
+                  Administrador
                 </p>
               </div>
               <button

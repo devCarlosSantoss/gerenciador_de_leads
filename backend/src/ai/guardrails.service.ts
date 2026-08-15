@@ -18,7 +18,7 @@ export const BLOCKED_PHRASES = [
   "seu concorrente está ganhando",
 ];
 
-export const LENGTH_CAPS = { short: 300, medium: 450, long: 600 } as const;
+export const LENGTH_CAPS = { short: 350, medium: 500, long: 650 } as const;
 export const MAX_EMOJIS = 2;
 
 const STOPWORDS = new Set([

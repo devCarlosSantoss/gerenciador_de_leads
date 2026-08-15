@@ -14,7 +14,7 @@
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
     "db:studio": "prisma studio",
-    "db:create-admin": "tsx src/scripts/create-admin.ts"
+    "db:bootstrap": "tsx src/scripts/create-admin.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.1.0",

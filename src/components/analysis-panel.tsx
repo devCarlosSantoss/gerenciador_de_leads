@@ -11,6 +11,35 @@ import {
 } from "lucide-react";
 import type { AnalysisStatus } from "@/lib/prospecting";
 
+interface StructuredFinding {
+  id: string;
+  category: "fact" | "inference" | "unknown" | "risk";
+  claim: string;
+  value?: string | number | boolean;
+  valueType?: "string" | "number" | "boolean" | "url" | "metric";
+  sourceType: string;
+  confidence?: number;
+  requiresHumanReview?: boolean;
+  evidence?: Array<{
+    sourceType: string;
+    url?: string;
+    evidenceType: string;
+    selector?: string;
+    extractedText?: string;
+    metricName?: string;
+    metricValue?: number;
+    screenshotReference?: string;
+  }>;
+}
+
+interface StructuredOpportunity {
+  title: string;
+  description?: string;
+  confidence?: number;
+  priority?: "high" | "medium" | "low";
+  evidenceFindingIds?: string[];
+}
+
 export interface AnalysisOutput {
   company_summary?: string;
   business_segment?: string;
@@ -27,9 +56,15 @@ export interface AnalysisOutput {
   };
   business_opportunities?: { service?: string; reason?: string; confidence?: string }[];
   personalization_points?: string[];
-  risks?: string[];
+  risks?: string[] | StructuredFinding[];
   suggested_message?: string;
   message_reasoning?: string;
+  facts?: StructuredFinding[];
+  inferences?: StructuredFinding[];
+  unknowns?: StructuredFinding[];
+  opportunities?: StructuredOpportunity[];
+  message_eligible_findings?: string[];
+  requires_human_review?: boolean;
 }
 
 export interface PanelData {
@@ -339,7 +374,101 @@ function AnalysisResult({
         <Section title="Riscos">
           <ul className="list-inside list-disc space-y-1 text-slate-700">
             {output.risks.map((r, i) => (
-              <li key={i}>{r}</li>
+              <li key={i}>
+                {typeof r === "string" ? r : r.claim}
+              </li>
+            ))}
+          </ul>
+        </Section>
+      )}
+
+      {output.facts && output.facts.length > 0 && (
+        <Section title="Fatos verificados">
+          <ul className="space-y-2">
+            {output.facts.map((f, i) => (
+              <li key={i} className="flex items-start gap-2 text-sm">
+                <span className="badge bg-emerald-50 text-emerald-700 shrink-0">Fato</span>
+                <div>
+                  <p className="text-slate-800">{f.claim}</p>
+                  {f.evidence && f.evidence.length > 0 && (
+                    <p className="mt-1 text-xs text-slate-500">
+                      {f.evidence.map((e, j) => (
+                        <span key={j} className="mr-2">
+                          {e.url ? (
+                            <a href={e.url} target="_blank" rel="noopener noreferrer" className="underline">
+                              {e.selector ?? "evidência"}
+                            </a>
+                          ) : (
+                            e.extractedText ?? e.metricName ?? "evidência"
+                          )}
+                        </span>
+                      ))}
+                    </p>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </Section>
+      )}
+
+      {output.inferences && output.inferences.length > 0 && (
+        <Section title="Inferências">
+          <ul className="space-y-2">
+            {output.inferences.map((inf, i) => (
+              <li key={i} className="flex items-start gap-2 text-sm">
+                <span className="badge bg-indigo-50 text-indigo-700 shrink-0">
+                  Inferência {typeof inf.confidence === "number" ? `(${Math.round(inf.confidence * 100)}%)` : ""}
+                </span>
+                <div>
+                  <p className="text-slate-800">{inf.claim}</p>
+                  {inf.evidence && inf.evidence.length > 0 && (
+                    <p className="mt-1 text-xs text-slate-500">
+                      {inf.evidence.map((e, j) => (
+                        <span key={j} className="mr-2">
+                          {e.url ? (
+                            <a href={e.url} target="_blank" rel="noopener noreferrer" className="underline">
+                              {e.selector ?? "evidência"}
+                            </a>
+                          ) : (
+                            e.extractedText ?? e.metricName ?? "evidência"
+                          )}
+                        </span>
+                      ))}
+                    </p>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </Section>
+      )}
+
+      {output.unknowns && output.unknowns.length > 0 && (
+        <Section title="Desconhecidos">
+          <ul className="list-inside list-disc space-y-1 text-slate-700">
+            {output.unknowns.map((u, i) => (
+              <li key={i} className="text-slate-600">{u.claim}</li>
+            ))}
+          </ul>
+        </Section>
+      )}
+
+      {output.opportunities && output.opportunities.length > 0 && (
+        <Section title="Oportunidades identificadas">
+          <ul className="space-y-2">
+            {output.opportunities.map((op, i) => (
+              <li key={i} className="flex items-start gap-2">
+                <ListChecks className="mt-0.5 h-4 w-4 shrink-0 text-indigo-500" />
+                <div>
+                  <span className="font-medium text-slate-800">
+                    {op.title}
+                    {op.confidence != null ? ` (${Math.round(op.confidence * 100)}%)` : ""}
+                    {op.priority ? ` [${op.priority}]` : ""}
+                  </span>
+                  {op.description && <p className="text-slate-600">{op.description}</p>}
+                </div>
+              </li>
             ))}
           </ul>
         </Section>

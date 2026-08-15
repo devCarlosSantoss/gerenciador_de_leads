@@ -20,8 +20,8 @@ export class SiteAuditService {
 
   constructor(private readonly prisma: PrismaService) {}
 
-  async audit(orgId: string, websiteId: string): Promise<AuditResult> {
-    const website = await this.prisma.website.findUnique({ where: { id: websiteId } });
+  async audit(websiteId: string): Promise<AuditResult> {
+    const website = await this.prisma.leadWebsite.findUnique({ where: { id: websiteId } });
     if (!website) throw new Error(`Website ${websiteId} não encontrado`);
 
     const result: AuditResult = {
@@ -32,7 +32,6 @@ export class SiteAuditService {
       websiteStatus: "UNREACHABLE",
     };
 
-    // 1. DNS
     let dnsOk = false;
     try {
       await dns.resolve4(website.domain);
@@ -43,21 +42,19 @@ export class SiteAuditService {
       result.errors.push("dns_failed");
     }
     if (!dnsOk) {
-      await this.save(orgId, websiteId, result);
+      await this.save(websiteId, result);
       return result;
     }
 
-    // 2. HTTPS + conteúdo
     const html = await this.fetchHtml(website.url, result);
     if (html === null) {
       result.websiteStatus = "UNREACHABLE";
-      await this.save(orgId, websiteId, result);
+      await this.save(websiteId, result);
       return result;
     }
 
     result.websiteStatus = this.classifyParked(html) ? "PARKED" : "ACTIVE";
 
-    // 3. Checks determinísticos sobre o HTML
     const lower = html.toLowerCase();
     result.checks.https = { ok: website.url.startsWith("https://"), tlsValid: website.tlsValid ?? null };
     result.checks.title = { present: /<title[^>]*>([^<]{1,})<\/title>/i.test(html), length: (html.match(/<title[^>]*>([^<]*)<\/title>/i)?.[1] ?? "").trim().length };
@@ -84,7 +81,6 @@ export class SiteAuditService {
     result.metrics.htmlBytes = Buffer.byteLength(html);
     result.metrics.contentChars = html.length;
 
-    // 4. PageSpeed Insights API (opcional, gratuito) — apenas se houver chave
     if (config.PAGESPEED_API_KEY) {
       const ps = await this.pageSpeedMobile(website.url);
       if (ps) {
@@ -96,7 +92,7 @@ export class SiteAuditService {
       }
     }
 
-    await this.save(orgId, websiteId, result);
+    await this.save(websiteId, result);
     return result;
   }
 
@@ -183,10 +179,9 @@ export class SiteAuditService {
     }
   }
 
-  private async save(orgId: string, websiteId: string, result: AuditResult): Promise<void> {
+  private async save(websiteId: string, result: AuditResult): Promise<void> {
     await this.prisma.websiteAudit.create({
       data: {
-        organizationId: orgId,
         websiteId,
         tool: result.tool,
         metrics: result.metrics as never,
@@ -194,11 +189,11 @@ export class SiteAuditService {
         errors: result.errors,
       },
     });
-    await this.prisma.website.update({
+    await this.prisma.leadWebsite.update({
       where: { id: websiteId },
       data: { status: result.websiteStatus, lastFetchedAt: new Date(), httpStatus: result.metrics.httpStatus as number | null ?? null },
     });
-    await this.prisma.company.updateMany({
+    await this.prisma.lead.updateMany({
       where: { websites: { some: { id: websiteId } } },
       data: { websiteStatus: result.websiteStatus },
     });

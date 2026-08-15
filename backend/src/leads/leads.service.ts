@@ -1,7 +1,6 @@
 import { Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { QueueService } from "../queue/queue.service";
-import { AuditService } from "../audit/audit.service";
 import { ImportLeadsDto, LeadFiltersDto } from "./dto/leads.dto";
 import {
   normalizeName,
@@ -26,19 +25,16 @@ export class LeadsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly queue: QueueService,
-    private readonly audit: AuditService,
     private readonly dedup: DedupService,
   ) {}
 
-  /** Aceita o lote, persiste os brutos e enfileira a ingestão assíncrona. */
-  async ingestBatch(dto: Omit<ImportLeadsDto, "organizationId"> & { organizationId: string }): Promise<IngestSummary> {
-    const { organizationId, actorId, items } = dto;
+  async ingestBatch(dto: ImportLeadsDto): Promise<IngestSummary> {
+    const { actorId, items } = dto;
 
     const rows = items.map((item) => ({
-      organizationId,
       sourceKey: item.sourceKey,
       externalId: item.externalId ?? null,
-      companyName: item.company.name,
+      leadName: item.company.name,
       rawPayload: item as unknown as Prisma.InputJsonValue,
       collectedAt: new Date(item.collectedAt),
       purpose: item.purpose ?? null,
@@ -49,17 +45,7 @@ export class LeadsService {
       rows.map((r) => this.prisma.leadImport.create({ data: r })),
     );
 
-    await this.audit.record({
-      organizationId,
-      actorId,
-      actorType: "user",
-      action: "leads.import.accepted",
-      entityType: "lead_imports",
-      after: { count: created.length },
-    });
-
     await this.queue.queue("ingest").add("process-batch", {
-      organizationId,
       importIds: created.map((c) => c.id),
     });
 
@@ -91,7 +77,6 @@ export class LeadsService {
       contacts?: Array<{ type: string; value: string; isPrimary?: boolean }>;
     };
 
-    const org = leadImport.organizationId;
     const c = item.company;
 
     const phoneE164 = normalizePhoneE164(c.phone ?? c.whatsapp ?? null);
@@ -100,7 +85,7 @@ export class LeadsService {
       : null;
     const domain = normalizeDomain(c.website ?? null);
 
-    const dedup = await this.dedup.findDuplicate(org, {
+    const dedup = await this.dedup.findDuplicate({
       name: c.name,
       city: c.city ?? null,
       state: c.state ?? null,
@@ -111,7 +96,7 @@ export class LeadsService {
     if (dedup.result === "DUPLICATE_EXACT") {
       await this.prisma.leadImport.update({
         where: { id: importId },
-        data: { status: "COMPLETED", dedupResult: "DUPLICATE_EXACT", dedupReason: dedup.reason, matchedCompanyId: dedup.matchedCompanyId },
+        data: { status: "COMPLETED", dedupResult: "DUPLICATE_EXACT", dedupReason: dedup.reason, matchedLeadId: dedup.matchedLeadId },
       });
       return;
     }
@@ -119,15 +104,13 @@ export class LeadsService {
     if (dedup.result === "DUPLICATE_SUGGESTED") {
       await this.prisma.leadImport.update({
         where: { id: importId },
-        data: { status: "PARTIAL", dedupResult: "DUPLICATE_SUGGESTED", dedupReason: dedup.reason, matchedCompanyId: dedup.matchedCompanyId },
+        data: { status: "PARTIAL", dedupResult: "DUPLICATE_SUGGESTED", dedupReason: dedup.reason, matchedLeadId: dedup.matchedLeadId },
       });
       return;
     }
 
-    // ── Criação do lead (NEW) ──
-    const company = await this.prisma.company.create({
+    const lead = await this.prisma.lead.create({
       data: {
-        organizationId: org,
         externalId: leadImport.externalId ?? null,
         name: c.name,
         nameNormalized: normalizeName(c.name),
@@ -143,7 +126,7 @@ export class LeadsService {
         rating: c.rating ?? null,
         reviewsCount: c.reviewsCount ?? null,
         websiteStatus: domain ? "UNKNOWN" : "NO_WEBSITE",
-        status: "IMPORTADO",
+        status: "NEW",
         dataOrigin: leadImport.sourceKey,
         sourceUrl: (leadImport.rawPayload as { sourceUrl?: string }).sourceUrl ?? null,
         collectedAt: leadImport.collectedAt,
@@ -159,8 +142,7 @@ export class LeadsService {
         : ct.type === "INSTAGRAM" || ct.type === "LINKEDIN" ? normalizeHandle(ct.value)
         : null;
       return {
-        organizationId: org,
-        companyId: company.id,
+        leadId: lead.id,
         type: ct.type as "WHATSAPP" | "INSTAGRAM" | "EMAIL" | "PHONE" | "LINKEDIN",
         value: ct.value.trim(),
         valueNormalized: normalized ?? ct.value.trim().toLowerCase(),
@@ -170,11 +152,9 @@ export class LeadsService {
       };
     });
 
-    // WhatsApp/telefone do payload principal também vira contato.
     if (phoneE164 && !contacts.some((k) => k.type === "WHATSAPP" && k.valueNormalized === phoneE164)) {
       contacts.push({
-        organizationId: org,
-        companyId: company.id,
+        leadId: lead.id,
         type: "WHATSAPP",
         value: phoneE164,
         valueNormalized: phoneE164,
@@ -185,12 +165,12 @@ export class LeadsService {
     }
 
     if (contacts.length > 0) {
-      await this.prisma.contact.createMany({ data: contacts, skipDuplicates: true });
+      await this.prisma.leadContact.createMany({ data: contacts, skipDuplicates: true });
     }
 
     if (domain) {
-      await this.prisma.website.create({
-        data: { organizationId: org, companyId: company.id, url: domain.canonicalUrl!, domain: domain.domain },
+      await this.prisma.leadWebsite.create({
+        data: { leadId: lead.id, url: domain.canonicalUrl!, domain: domain.domain },
       });
     }
 
@@ -200,8 +180,7 @@ export class LeadsService {
         if (handle) {
           await this.prisma.socialProfile.create({
             data: {
-              organizationId: org,
-              companyId: company.id,
+              leadId: lead.id,
               platform: sc.type === "INSTAGRAM" ? "INSTAGRAM" : "LINKEDIN",
               handle,
               verifiedBy: leadImport.sourceKey,
@@ -213,20 +192,11 @@ export class LeadsService {
 
     await this.prisma.leadImport.update({
       where: { id: importId },
-      data: { status: "COMPLETED", dedupResult: "NEW", matchedCompanyId: company.id },
-    });
-
-    await this.audit.record({
-      organizationId: org,
-      actorType: "worker",
-      action: "leads.import.processed",
-      entityType: "companies",
-      entityId: company.id,
-      after: { source: leadImport.sourceKey },
+      data: { status: "COMPLETED", dedupResult: "NEW", matchedLeadId: lead.id },
     });
   }
 
-  async processBatch(organizationId: string, importIds: string[]): Promise<void> {
+  async processBatch(importIds: string[]): Promise<void> {
     for (const id of importIds) {
       try {
         await this.processImportItem(id);
@@ -240,8 +210,8 @@ export class LeadsService {
     }
   }
 
-  async list(orgId: string, filters: LeadFiltersDto) {
-    const where: Prisma.CompanyWhereInput = { organizationId: orgId, deletedAt: null };
+  async list(filters: LeadFiltersDto) {
+    const where: Prisma.LeadWhereInput = { deletedAt: null };
 
     if (filters.status) where.status = filters.status as never;
     if (filters.city) where.city = { contains: filters.city, mode: "insensitive" };
@@ -253,9 +223,9 @@ export class LeadsService {
     const page = filters.page ?? 1;
     const pageSize = filters.pageSize ?? 20;
 
-    const [total, companies] = await Promise.all([
-      this.prisma.company.count({ where }),
-      this.prisma.company.findMany({
+    const [total, leads] = await Promise.all([
+      this.prisma.lead.count({ where }),
+      this.prisma.lead.findMany({
         where,
         orderBy: { createdAt: "desc" },
         skip: (page - 1) * pageSize,
@@ -268,19 +238,19 @@ export class LeadsService {
     ]);
 
     return {
-      data: companies.map((c) => ({
-        id: c.id,
-        externalId: c.externalId,
-        name: c.name,
-        category: c.category,
-        city: c.city,
-        state: c.state,
-        status: c.status,
-        contactStatus: c.contactStatus,
-        websiteStatus: c.websiteStatus,
-        score: c.scores[0]?.score ?? null,
-        scoreTier: c.scores[0]?.tier ?? null,
-        contacts: c.contacts.map((k) => ({ type: k.type, value: k.value })),
+      data: leads.map((l) => ({
+        id: l.id,
+        externalId: l.externalId,
+        name: l.name,
+        category: l.category,
+        city: l.city,
+        state: l.state,
+        status: l.status,
+        contactStatus: l.contactStatus,
+        websiteStatus: l.websiteStatus,
+        score: l.scores[0]?.score ?? null,
+        scoreTier: l.scores[0]?.tier ?? null,
+        contacts: l.contacts.map((k) => ({ type: k.type, value: k.value })),
       })),
       total,
       page,
@@ -288,55 +258,40 @@ export class LeadsService {
     };
   }
 
-  /**
-   * Marca o lead como contatado após o envio manual (click-to-chat/cópia).
-   * Move para ENVIADO, saindo da fila de PRONTO_PARA_CONTATO.
-   */
-  async markContacted(orgId: string, companyId: string, actorId?: string) {
-    const company = await this.prisma.company.findFirst({
-      where: { id: companyId, organizationId: orgId, deletedAt: null },
+  async markContacted(leadId: string, actorId?: string) {
+    const lead = await this.prisma.lead.findFirst({
+      where: { id: leadId, deletedAt: null },
     });
-    if (!company) throw new NotFoundException("Lead não encontrado");
+    if (!lead) throw new NotFoundException("Lead não encontrado");
 
-    const updated = await this.prisma.company.update({
-      where: { id: companyId },
-      data: { status: "ENVIADO" },
-    });
-
-    await this.audit.record({
-      organizationId: orgId,
-      actorId,
-      actorType: "user",
-      action: "leads.marked_contacted",
-      entityType: "companies",
-      entityId: companyId,
-      after: { status: updated.status, method: "manual_click_to_chat" },
+    const updated = await this.prisma.lead.update({
+      where: { id: leadId },
+      data: { status: "CONTACTED_CONFIRMED" },
     });
 
     return { status: updated.status, message: "Lead marcado como contatado (envio manual)" };
   }
 
-  /** Resolve o lead criado na importação (externalId = id do sistema legado). */
-  async findByExternalId(orgId: string, externalId: string) {
-    const company = await this.prisma.company.findFirst({
-      where: { organizationId: orgId, externalId, deletedAt: null },
+  async findByExternalId(externalId: string) {
+    const lead = await this.prisma.lead.findFirst({
+      where: { externalId, deletedAt: null },
     });
-    if (!company) {
+    if (!lead) {
       throw new NotFoundException("Lead não encontrado — verifique se ele foi migrado para o novo sistema");
     }
     return {
-      id: company.id,
-      name: company.name,
-      category: company.category,
-      city: company.city,
-      state: company.state,
-      status: company.status,
+      id: lead.id,
+      name: lead.name,
+      category: lead.category,
+      city: lead.city,
+      state: lead.state,
+      status: lead.status,
     };
   }
 
-  async detail(orgId: string, companyId: string) {
-    const company = await this.prisma.company.findFirst({
-      where: { id: companyId, organizationId: orgId, deletedAt: null },
+  async detail(leadId: string) {
+    const lead = await this.prisma.lead.findFirst({
+      where: { id: leadId, deletedAt: null },
       include: {
         contacts: { where: { deletedAt: null } },
         websites: {
@@ -346,21 +301,19 @@ export class LeadsService {
         socialProfiles: { where: { deletedAt: null } },
         scores: { orderBy: { calculatedAt: "desc" }, take: 1 },
         analysisRuns: { orderBy: { createdAt: "desc" }, take: 1 },
-        consents: true,
       },
     });
-    if (!company) throw new NotFoundException("Lead não encontrado");
+    if (!lead) throw new NotFoundException("Lead não encontrado");
 
     const suppressed = await this.prisma.suppressionList.findFirst({
       where: {
-        organizationId: orgId,
         OR: [
-          { companyId: company.id },
-          ...company.contacts.map((k) => ({ contact: k.valueNormalized, channel: k.type })),
+          { leadId: lead.id },
+          ...lead.contacts.map((k) => ({ contact: k.valueNormalized, channel: k.type })),
         ],
       },
     });
 
-    return { ...company, suppressed: Boolean(suppressed) };
+    return { ...lead, suppressed: Boolean(suppressed) };
   }
 }

@@ -1,14 +1,8 @@
-import { BadRequestException, Body, Controller, Get, Headers, NotFoundException, Param, Post } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Get, NotFoundException, Param, Post } from "@nestjs/common";
 import type { Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { QueueService } from "../queue/queue.service";
 import { CreateAnalysisDtoSchema } from "./analysis.dto";
-
-function resolveOrg(headers: Record<string, string | undefined>): string {
-  const org = headers["x-org-id"];
-  if (!org) throw new BadRequestException("Cabeçalho X-Org-ID obrigatório");
-  return org;
-}
 
 @Controller("leads/:id/analyze")
 export class AnalysisController {
@@ -21,30 +15,26 @@ export class AnalysisController {
   async run(
     @Param("id") id: string,
     @Body() body: unknown,
-    @Headers() headers: Record<string, string | undefined>,
   ) {
     CreateAnalysisDtoSchema.parse(body ?? {});
-    const org = resolveOrg(headers);
 
-    const company = await this.prisma.company.findFirst({
-      where: { id, organizationId: org, deletedAt: null },
+    const lead = await this.prisma.lead.findFirst({
+      where: { id, deletedAt: null },
     });
-    if (!company) throw new NotFoundException("Lead não encontrado");
+    if (!lead) throw new NotFoundException("Lead não encontrado");
 
     const job = await this.queue.queue("analysis").add(
       "analyze-company",
-      { organizationId: org, companyId: id },
+      { companyId: id },
       {
         attempts: 3,
         backoff: { type: "exponential", delay: 4000 },
       },
     );
 
-    // Registra a análise como QUEUED imediatamente, para acompanhamento em tempo real.
     await this.prisma.analysisRun.create({
       data: {
-        organizationId: org,
-        companyId: id,
+        leadId: id,
         provider: "pending",
         model: "pending",
         promptVersion: "structured-v1",
@@ -61,21 +51,17 @@ export class AnalysisController {
     };
   }
 
-  /** Status e resultado da análise mais recente (com tempo decorrido ao vivo). */
   @Get()
   async status(
     @Param("id") id: string,
-    @Headers() headers: Record<string, string | undefined>,
   ) {
-    const org = resolveOrg(headers);
-
-    const company = await this.prisma.company.findFirst({
-      where: { id, organizationId: org, deletedAt: null },
+    const lead = await this.prisma.lead.findFirst({
+      where: { id, deletedAt: null },
     });
-    if (!company) throw new NotFoundException("Lead não encontrado");
+    if (!lead) throw new NotFoundException("Lead não encontrado");
 
     const analysis = await this.prisma.analysisRun.findFirst({
-      where: { companyId: id },
+      where: { leadId: id },
       orderBy: { createdAt: "desc" },
     });
 
@@ -89,7 +75,7 @@ export class AnalysisController {
       : null;
 
     return {
-      company: { id: company.id, name: company.name, status: company.status },
+      lead: { id: lead.id, name: lead.name, status: lead.status },
       analysis: analysis
         ? {
             id: analysis.id,

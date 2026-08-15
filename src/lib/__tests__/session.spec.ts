@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { SignJWT } from "jose";
-import { verifyToken, signAccessToken } from "@/lib/session";
+import { verifyToken } from "@/lib/session";
 
 const TEST_SECRET = "test-secret-test-secret-test-secret-test-secret";
 
@@ -8,8 +8,7 @@ const CLAIMS = {
   sub: "u_1",
   email: "ana@empresa.com",
   name: "Ana Souza",
-  role: "ADMIN",
-  orgId: "default",
+  mustChangePassword: false,
 };
 
 beforeEach(() => {
@@ -17,29 +16,44 @@ beforeEach(() => {
 });
 
 describe("session (JWT)", () => {
-  it("assina e valida um access token com as claims esperadas", async () => {
-    const token = await signAccessToken(CLAIMS);
+  it("valida um access token com as claims esperadas", async () => {
+    const token = await new SignJWT({ ...CLAIMS, type: "access" })
+      .setProtectedHeader({ alg: "HS256", typ: "JWT" })
+      .setSubject(CLAIMS.sub)
+      .setIssuedAt()
+      .setExpirationTime(Math.floor(Date.now() / 1000) + 900)
+      .sign(new TextEncoder().encode(TEST_SECRET));
+
     const user = await verifyToken(token);
 
     expect(user).not.toBeNull();
     expect(user?.sub).toBe("u_1");
     expect(user?.email).toBe("ana@empresa.com");
     expect(user?.name).toBe("Ana Souza");
-    expect(user?.role).toBe("ADMIN");
-    expect(user?.orgId).toBe("default");
+    expect(user?.mustChangePassword).toBe(false);
   });
 
   it("rejeita token assinado com segredo diferente", async () => {
-    const token = await signAccessToken(CLAIMS);
+    const token = await new SignJWT({ ...CLAIMS, type: "access" })
+      .setProtectedHeader({ alg: "HS256", typ: "JWT" })
+      .setSubject(CLAIMS.sub)
+      .setIssuedAt()
+      .setExpirationTime(Math.floor(Date.now() / 1000) + 900)
+      .sign(new TextEncoder().encode(TEST_SECRET));
     process.env.JWT_SECRET = "outro-segredo-outro-segredo-outro-segredo-outro";
     expect(await verifyToken(token)).toBeNull();
   });
 
   it("rejeita token adulterado (payload modificado)", async () => {
-    const token = await signAccessToken(CLAIMS);
+    const token = await new SignJWT({ ...CLAIMS, type: "access" })
+      .setProtectedHeader({ alg: "HS256", typ: "JWT" })
+      .setSubject(CLAIMS.sub)
+      .setIssuedAt()
+      .setExpirationTime(Math.floor(Date.now() / 1000) + 900)
+      .sign(new TextEncoder().encode(TEST_SECRET));
     const [header, , signature] = token.split(".");
     const tamperedPayload = Buffer.from(
-      JSON.stringify({ ...CLAIMS, type: "access", role: "SUPER_ADMIN" }),
+      JSON.stringify({ ...CLAIMS, type: "access", mustChangePassword: true }),
     ).toString("base64url");
     const tampered = `${header}.${tamperedPayload}.${signature}`;
     expect(await verifyToken(tampered)).toBeNull();

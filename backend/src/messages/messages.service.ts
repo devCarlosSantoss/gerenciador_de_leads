@@ -7,7 +7,6 @@ import { hashContent } from "../leads/normalization.service";
 import { ContactLifecycleService } from "../contact/contact-lifecycle.service";
 import { FindingsService } from "../analysis/findings.service";
 import { config } from "../config/env";
-import type { Message, MessageStatus } from "@prisma/client";
 
 /** Constrói o link oficial de clique para conversar (wa.me) com texto pré-preenchido. */
 export function buildWaMeUrl(phoneE164: string, text: string): string {
@@ -41,14 +40,14 @@ REGRAS:
 3. Mostrar que você pesquisou o negócio dele (use as observações e os fatos verificáveis fornecidos em "DADOS DO LEAD").
 4. Oferecer algo gratuito e específico: "montei uma demonstração".
 5. Finalizar com pergunta de permissão: "Posso te mandar pra você ver? É bem rápido."
-6. Máximo 600 caracteres no total.
+6. Máximo 650 caracteres no total.
 
 Você escreve como ${senderName}, da Aurora Code Tech, mas NUNCA comece a mensagem com o nome da empresa nem com jargão comercial ("Sou da Aurora", "Estamos entrando em contato").
 
 DADOS DO LEAD (enviados no prompt do usuário):
 - nome_empresa, ramo, tem_site (SIM|NÃO), url_site, observacoes, onde_encontrou.
 
-TAREFA — siga 1 dos 2 casos:
+TAREIRA — siga 1 dos 2 casos:
 
 CASO 1: SE tem_site = SIM
 Use algo que você viu no site para personalizar. Ex: produto, serviço, falta de catálogo, site lento.
@@ -74,7 +73,9 @@ REGRAS ADICIONAIS:
 5. Se as observações forem insuficientes, retorne status="manual_review" e messages=[].
 
 FORMATO DE SAÍDA (JSON estrito) — retorne EXATAMENTE UMA mensagem no array:
-{ "status": "ready|manual_review", "messages": [ { "length": "long", "text": "...", "personalization_evidence": ["..."] } ] }`;
+{ "status": "ready|manual_review", "messages": [ { "length": "long", "text": "...", "personalization_evidence": ["..."] } ] }
+
+IMPORTANTE: Use SEMPRE "length": "long" (máximo 650 caracteres). Não use "short" nem "medium".`;
 }
 
 @Injectable()
@@ -90,25 +91,23 @@ export class MessagesService {
   ) {}
 
   /** Gera 1 rascunho de primeira mensagem (SDR) com evidências e grava como DRAFT (nunca envia). */
-  async generate(orgId: string, companyId: string): Promise<MessageGeneration> {
-    const company = await this.prisma.company.findFirst({
-      where: { id: companyId, organizationId: orgId, deletedAt: null },
+  async generate(leadId: string): Promise<MessageGeneration> {
+    const lead = await this.prisma.lead.findFirst({
+      where: { id: leadId, deletedAt: null },
       include: {
         analysisRuns: { orderBy: { createdAt: "desc" }, take: 1 },
         websites: { where: { deletedAt: null }, take: 1 },
         socialProfiles: { where: { deletedAt: null } },
       },
     });
-    if (!company) throw new NotFoundException("Lead não encontrado");
+    if (!lead) throw new NotFoundException("Lead não encontrado");
 
-    const analysis = company.analysisRuns[0];
+    const analysis = lead.analysisRuns[0];
     if (!analysis || analysis.status === "FAILED") {
       return { status: "manual_review", messages: [] };
     }
 
-    // Personalização SOMENTE com findings aprovados (filtro de evidências
-    // permitidas): fatos/inferências evidenciados e confiáveis do último run.
-    const eligible = await this.findings.getEligibleFindings(orgId, companyId);
+    const eligible = await this.findings.getEligibleFindings(leadId);
 
     const points = eligible.map((f) => {
       const ev = f.evidence[0];
@@ -126,26 +125,22 @@ export class MessagesService {
       return { status: "manual_review", messages: [] };
     }
 
-    // Dados do lead para o prompt do SDR (sem PII de telefones/e-mails).
-    const website = company.websites[0];
+    const website = lead.websites[0];
     const payload: Record<string, unknown> = {
-      nome_empresa: company.name,
-      ramo: company.category ?? "serviços",
+      nome_empresa: lead.name,
+      ramo: lead.category ?? "serviços",
       tem_site: website ? "SIM" : "NÃO",
       url_site: website?.url ?? null,
       observacoes: points,
-      onde_encontrou: buildWhereFound(company.socialProfiles),
+      onde_encontrou: buildWhereFound(lead.socialProfiles),
       personalization_points: points,
       risks,
     };
 
-    // Regenerar substitui os rascunhos antigos (nunca mensagens aprovadas).
-    await this.prisma.message.deleteMany({
-      where: { organizationId: orgId, companyId, status: "DRAFT" },
+    await this.prisma.messageDraft.deleteMany({
+      where: { leadId, status: "DRAFT" },
     });
 
-    // Até MAX_GENERATION_ATTEMPTS tentativas: se a IA exceder os guardrails,
-    // repetimos com feedback corretivo. Sempre grava apenas UMA mensagem.
     const MAX_GENERATION_ATTEMPTS = 2;
     let feedbackReasons: string[] = [];
 
@@ -156,7 +151,7 @@ export class MessagesService {
           rejected: true,
           reasons: feedbackReasons,
           instruction:
-            "A tentativa anterior foi rejeitada. Reescreva a MENSAGEM ÚNICA respeitando exatamente o limite de 600 caracteres e as regras acima.",
+            "A tentativa anterior foi rejeitada. Reescreva a MENSAGEM ÚNICA respeitando exatamente o limite de 650 caracteres e as regras acima.",
         };
       }
 
@@ -169,7 +164,6 @@ export class MessagesService {
 
       const generation = res.value;
 
-      // Guardrails no código + persistência do DRAFT aprovado (apenas o primeiro).
       const drafts: MessageGeneration = { status: "manual_review", messages: [] };
       feedbackReasons = [];
       const msg = generation.messages[0];
@@ -182,10 +176,9 @@ export class MessagesService {
         if (verdict.ok) {
           drafts.status = "ready";
           drafts.messages.push(msg);
-          await this.prisma.message.create({
+          await this.prisma.messageDraft.create({
             data: {
-              organizationId: orgId,
-              companyId,
+              leadId,
               channel: "WHATSAPP",
               status: "DRAFT",
               content: msg.text,
@@ -200,7 +193,7 @@ export class MessagesService {
       }
 
       if (drafts.messages.length > 0) {
-        await this.lifecycle.transition(orgId, companyId, "MESSAGE_GENERATED", {
+        await this.lifecycle.transition(leadId, "MESSAGE_GENERATED", {
           actorType: "system",
           metadata: { draftCount: drafts.messages.length, generatedBy: "manual" },
         });
@@ -212,21 +205,21 @@ export class MessagesService {
   }
 
   /** Aprova um DRAFT (Modo A — envio só após aprovação humana). */
-  async approve(orgId: string, messageId: string, actorId?: string): Promise<{ status: MessageStatus }> {
-    const message = await this.prisma.message.findFirst({
-      where: { id: messageId, organizationId: orgId },
+  async approve(messageId: string, actorId?: string): Promise<{ status: string }> {
+    const message = await this.prisma.messageDraft.findFirst({
+      where: { id: messageId },
     });
     if (!message) throw new NotFoundException("Mensagem não encontrada");
     if (message.status !== "DRAFT") {
       return { status: message.status };
     }
 
-    const updated = await this.prisma.message.update({
+    const updated = await this.prisma.messageDraft.update({
       where: { id: messageId },
-      data: { status: "APPROVED", approvedById: actorId ?? null, approvedAt: new Date() },
+      data: { status: "APPROVED", approvedBy: actorId ?? null, approvedAt: new Date() },
     });
 
-    await this.lifecycle.transition(orgId, message.companyId, "APPROVED", {
+    await this.lifecycle.transition(message.leadId, "MESSAGE_APPROVED", {
       actorId,
       messageId,
     });
@@ -235,14 +228,14 @@ export class MessagesService {
   }
 
   /** Lista as mensagens de um lead (para a fila de revisão/envio manual). */
-  async listForCompany(orgId: string, companyId: string): Promise<Message[]> {
-    const company = await this.prisma.company.findFirst({
-      where: { id: companyId, organizationId: orgId, deletedAt: null },
+  async listForCompany(leadId: string) {
+    const lead = await this.prisma.lead.findFirst({
+      where: { id: leadId, deletedAt: null },
     });
-    if (!company) throw new NotFoundException("Lead não encontrado");
+    if (!lead) throw new NotFoundException("Lead não encontrado");
 
-    return this.prisma.message.findMany({
-      where: { organizationId: orgId, companyId },
+    return this.prisma.messageDraft.findMany({
+      where: { leadId },
       orderBy: { createdAt: "desc" },
     });
   }
@@ -252,11 +245,11 @@ export class MessagesService {
    * pré-preenchida. Envio 100% manual: o operador clica e envia no próprio
    * WhatsApp. Nunca automatiza a sessão do WhatsApp Web.
    */
-  async buildChatLink(orgId: string, messageId: string) {
-    const message = await this.prisma.message.findFirst({
-      where: { id: messageId, organizationId: orgId },
+  async buildChatLink(messageId: string) {
+    const message = await this.prisma.messageDraft.findFirst({
+      where: { id: messageId },
       include: {
-        company: {
+        lead: {
           include: { contacts: { where: { deletedAt: null } } },
         },
       },
@@ -270,9 +263,9 @@ export class MessagesService {
     }
 
     const contact =
-      message.company.contacts.find((c) => c.type === "WHATSAPP" && c.isValid && c.valueNormalized.startsWith("55")) ??
-      message.company.contacts.find((c) => c.type === "PHONE" && c.isValid && c.valueNormalized.startsWith("55")) ??
-      message.company.contacts.find((c) => (c.type === "WHATSAPP" || c.type === "PHONE") && c.isValid);
+      message.lead.contacts.find((c) => c.type === "WHATSAPP" && c.isValid && c.valueNormalized.startsWith("55")) ??
+      message.lead.contacts.find((c) => c.type === "PHONE" && c.isValid && c.valueNormalized.startsWith("55")) ??
+      message.lead.contacts.find((c) => (c.type === "WHATSAPP" || c.type === "PHONE") && c.isValid);
 
     if (!contact) {
       throw new NotFoundException("Lead sem telefone/WhatsApp válido para envio manual");
@@ -280,9 +273,8 @@ export class MessagesService {
 
     const suppressed = await this.prisma.suppressionList.findFirst({
       where: {
-        organizationId: orgId,
         OR: [
-          { companyId: message.companyId },
+          { leadId: message.leadId },
           { contact: contact.valueNormalized, channel: "WHATSAPP" },
           { contact: contact.valueNormalized, channel: "PHONE" },
         ],
