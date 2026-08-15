@@ -164,7 +164,7 @@ export function enqueueAnalysis(companyId: string) {
 
 export function getAnalysis(companyId: string) {
   return fetchApi<{
-    company: { id: string; name: string; status: string };
+    lead: { id: string; name: string; status: string };
     analysis: AiAnalysisSummary | null;
   }>(`/leads/${companyId}/analyze`);
 }
@@ -193,7 +193,7 @@ export interface AnalysisRunFindings {
 }
 
 export interface FindingsResponse {
-  company: { id: string; name: string };
+  lead: { id: string; name: string };
   run: AnalysisRunFindings | null;
 }
 

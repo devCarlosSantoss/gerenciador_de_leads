@@ -8,7 +8,6 @@ import { FindingsPanel } from "@/components/findings-panel";
 import {
   getAnalysis,
   ProspectingApiError,
-  resolveByExternalId,
 } from "@/lib/prospecting";
 import type { LeadDetail as LeadDetailType } from "@/types/prisma";
 
@@ -45,11 +44,10 @@ export default async function LeadDetailPage({
   let initial: PanelData | null = null;
   let initialError = "";
   try {
-    const company = await resolveByExternalId(id);
-    const data = await getAnalysis(company.id);
+    const data = await getAnalysis(id);
     initial = {
       migrated: true,
-      company: data.company,
+      company: data.lead,
       analysis: data.analysis,
     };
   } catch (err) {

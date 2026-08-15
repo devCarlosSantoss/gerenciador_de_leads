@@ -1,4 +1,4 @@
-import { getAnalysis, ProspectingApiError, resolveByExternalId } from "@/lib/prospecting";
+import { getAnalysis, ProspectingApiError } from "@/lib/prospecting";
 
 export const dynamic = "force-dynamic";
 
@@ -8,9 +8,12 @@ export async function GET(
 ) {
   const { id } = await params;
   try {
-    const company = await resolveByExternalId(id);
-    const data = await getAnalysis(company.id);
-    return Response.json(data);
+    const data = await getAnalysis(id);
+    return Response.json({
+      migrated: true,
+      company: data.lead,
+      analysis: data.analysis,
+    });
   } catch (err) {
     if (err instanceof ProspectingApiError && err.status === 404) {
       return Response.json({ migrated: false, company: null, analysis: null });

@@ -128,7 +128,7 @@ export function FindingsPanel({
     );
   }
 
-  if (!data?.company) {
+  if (!data?.lead) {
     return (
       <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
         Nenhuma análise estruturada disponível para este lead.
