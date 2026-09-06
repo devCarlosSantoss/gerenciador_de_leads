@@ -15,11 +15,6 @@ import { CurrentUser } from "./current-user.decorator";
 import { Public } from "./public.decorator";
 import { UserAgent } from "./user-agent.decorator";
 
-class LoginDto {
-  email: string;
-  password: string;
-}
-
 class ChangePasswordDto {
   currentPassword: string;
   newPassword: string;
@@ -37,11 +32,10 @@ export class PersonalAuthController {
   @Post("login")
   @HttpCode(HttpStatus.OK)
   async login(
-    @Body() dto: LoginDto,
     @Ip() ip: string,
     @UserAgent() userAgent: string,
   ): Promise<AuthResult> {
-    return this.auth.login(dto.email, dto.password, { ip, userAgent });
+    return this.auth.login("", "", { ip, userAgent });
   }
 
   @Public()

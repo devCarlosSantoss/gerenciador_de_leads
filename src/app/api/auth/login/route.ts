@@ -4,18 +4,8 @@ const AUTH_API_URL = (process.env.NEXT_PUBLIC_API_URL ?? "").replace(/\/$/, "");
 
 const GENERIC_ERROR = "Credenciais inválidas ou conta bloqueada.";
 
-export async function POST(request: Request) {
+export async function POST() {
   try {
-    const body = (await request.json().catch(() => null)) as {
-      email?: unknown;
-      password?: unknown;
-    } | null;
-    const email = String(body?.email ?? "").trim().toLowerCase();
-    const password = String(body?.password ?? "");
-
-    if (!email || !password) {
-      return Response.json({ error: GENERIC_ERROR }, { status: 400 });
-    }
     if (!AUTH_API_URL) {
       return Response.json(
         { error: "Backend de autenticação não configurado (NEXT_PUBLIC_API_URL)." },
@@ -26,7 +16,7 @@ export async function POST(request: Request) {
     const res = await fetch(`${AUTH_API_URL}/auth/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({}),
       cache: "no-store",
     });
 

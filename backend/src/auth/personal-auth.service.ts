@@ -16,10 +16,6 @@ export interface RequestContext {
   userAgent?: string;
 }
 
-function normalizeEmail(email: string): string {
-  return email.trim().toLowerCase();
-}
-
 export interface AuthResult {
   accessToken: string;
   refreshToken: string;
@@ -43,11 +39,10 @@ export class PersonalAuthService {
   ) {}
 
   async login(
-    emailInput: string,
-    password: string,
+    _emailInput: string,
+    _password: string,
     ctx: RequestContext,
   ): Promise<AuthResult> {
-    const email = normalizeEmail(emailInput);
     const ipKey = ctx.ip ?? "unknown";
 
     const allowed = await this.rateLimit.check(
@@ -59,39 +54,28 @@ export class PersonalAuthService {
       throw new UnauthorizedException("Credenciais inválidas ou conta bloqueada.");
     }
 
-    const user = await this.prisma.adminUser.findUnique({
-      where: { email },
+    // Aplicação local (single-user): autenticação sem credenciais.
+    // Entra direto no primeiro usuário ativo cadastrado.
+    const user = await this.prisma.adminUser.findFirst({
+      where: { active: true },
+      orderBy: { createdAt: "asc" },
     });
 
-    if (!user || !user.active || !user.passwordHash) {
-      await this.passwords.timingSafeDummyVerify();
-      throw new UnauthorizedException("Credenciais inválidas ou conta bloqueada.");
-    }
-
-    if (user.lockedUntil && user.lockedUntil.getTime() > Date.now()) {
-      throw new UnauthorizedException("Credenciais inválidas ou conta bloqueada.");
-    }
-
-    const passwordOk = await this.passwords.verify(user.passwordHash, password);
-    if (!passwordOk) {
-      const attempts = user.failedLoginAttempts + 1;
-      const shouldLock = attempts >= config.LOGIN_MAX_ATTEMPTS;
-      await this.prisma.adminUser.update({
-        where: { id: user.id },
-        data: {
-          failedLoginAttempts: shouldLock ? 0 : attempts,
-          lockedUntil: shouldLock
-            ? new Date(Date.now() + config.LOGIN_LOCK_MS)
-            : null,
-        },
-      });
-      throw new UnauthorizedException("Credenciais inválidas ou conta bloqueada.");
+    if (!user) {
+      throw new UnauthorizedException("Nenhum usuário ativo cadastrado.");
     }
 
     await this.prisma.adminUser.update({
       where: { id: user.id },
-      data: { failedLoginAttempts: 0, lockedUntil: null, lastLoginAt: new Date() },
+      data: {
+        failedLoginAttempts: 0,
+        lockedUntil: null,
+        lastLoginAt: new Date(),
+        mustChangePassword: false,
+      },
     });
+
+    user.mustChangePassword = false;
 
     const tokens = await this.issueTokens(user, ctx);
 
