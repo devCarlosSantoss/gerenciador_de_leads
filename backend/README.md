@@ -78,7 +78,8 @@ Todas as rotas, exceto `@Public()` (health, webhooks e o próprio `/auth/*`), ex
 
 ### Endpoints de autenticação
 
-- `POST /auth/login` `{ email, password }` → `{ accessToken, refreshToken, user }`.
+- `POST /auth/login` — login **sem credenciais** (app local single-user): entra direto
+  no primeiro usuário ativo. → `{ accessToken, refreshToken, user }`.
 - `POST /auth/refresh` `{ refreshToken }` → novo par (rotaciona; reuso revoga a família).
 - `POST /auth/logout` `{ refreshToken }` — revoga o refresh token.
 - `POST /auth/forgot-password` `{ email }` — sempre resposta genérica; em dev/test devolve
@@ -92,19 +93,21 @@ Cabeçalho `X-Org-ID` simula o tenant do token JWT/OAuth (Fase 1).
 
 ### Criar o primeiro administrador
 
+O bootstrap cria o primeiro usuário (single-user) se ainda não existir.
+
 ```bash
-# Script (usa ADMIN_INITIAL_* do .env; sem expor a senha em logs)
-npm run db:create-admin
-# ou, apontando o .env:
-node -r dotenv/config dist/scripts/create-admin.js
+PERSONAL_ADMIN_PASSWORD='troque-por-uma-senha-forte' npm run db:bootstrap
 ```
+
+> `PERSONAL_ADMIN_PASSWORD` exige no mínimo 12 caracteres e é usada APENAS no bootstrap.
+> O login da aplicação **não pede senha** — basta clicar em "Entrar".
 
 ### Variáveis de autenticação (`.env`)
 
 `JWT_SECRET` (≥32, obrigatória, **a mesma do frontend**), `JWT_ACCESS_TTL` (15m),
 `JWT_REFRESH_TTL_DAYS` (7), `LOGIN_MAX_ATTEMPTS` (5), `LOGIN_LOCK_MS` (15m),
 `LOGIN_RATE_LIMIT`/`LOGIN_RATE_WINDOW_MS` (10/60s), `RESET_TOKEN_TTL_MINUTES` (30),
-`RESET_PASSWORD_BASE_URL`, `ADMIN_INITIAL_EMAIL`/`ADMIN_INITIAL_PASSWORD`/`ADMIN_INITIAL_NAME`,
+`RESET_PASSWORD_BASE_URL`, `PERSONAL_ADMIN_PASSWORD` (só no bootstrap),
 `CORS_ORIGIN`. Ver `backend/.env.example`.
 
 ## Cobertura de testes
